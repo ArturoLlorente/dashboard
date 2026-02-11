@@ -25,6 +25,7 @@ load_env()
 # Configuration
 IPTV_USERNAME = os.environ.get('IPTV_USERNAME', 'your_username')
 IPTV_PASSWORD = os.environ.get('IPTV_PASSWORD', 'your_password')
+IPTV_HOST = os.environ.get('IPTV_HOST', 'your_host.com')
 
 def run_command(command):
     """Execute shell command and return output"""
@@ -123,11 +124,11 @@ def get_network_info():
 
 def get_iptv_status():
     try:
-        url = f"https://av-ext.com:8443/player_api.php?username={IPTV_USERNAME}&password={IPTV_PASSWORD}"
+        url = f"https://{IPTV_HOST}/player_api.php?username={IPTV_USERNAME}&password={IPTV_PASSWORD}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
             "Accept": "application/json,text/plain,*/*",
-            "Referer": "https://av-ext.com:8443/",
+            "Referer": f"https://{IPTV_HOST}/",
         }
 
         r = requests.get(url, headers=headers, timeout=10)
