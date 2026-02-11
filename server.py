@@ -111,8 +111,8 @@ def get_network_info():
         
         for interface, stats in net_io.items():
             interfaces[interface] = {
-                'bytes_sent': round(stats.bytes_sent / (1024**2), 2),
-                'bytes_recv': round(stats.bytes_recv / (1024**2), 2)
+                'bytes_sent': stats.bytes_sent,
+                'bytes_recv': stats.bytes_recv
             }
         
         return {
