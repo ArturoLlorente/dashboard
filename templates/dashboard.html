@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Server Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg0:#070b14;
+      --bg1:#0b1222;
+      --bg2:#0e1830;
+      --border:rgba(148,163,184,.14);
+      --text:#e5e7eb;
+      --muted:#93a4bd;
+
+      --accent:#22c55e;
+      --accent2:#38bdf8;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+
+      --shadow: 0 10px 30px rgba(0,0,0,.45);
+      --r:14px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background:
+        radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.10), transparent 55%),
+        radial-gradient(1000px 700px at 90% 20%, rgba(34,197,94,.08), transparent 60%),
+        linear-gradient(180deg, var(--bg0), #040612 60%, #040612);
+      color:var(--text);
+      padding:22px;
+      min-height:100vh;
+    }
+    .container{max-width:1500px;margin:0 auto}
+
+    .header{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:16px;
+      padding:16px 18px;border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:16px;
+      align-items:center;
+    }
+    .title h1{font-size:18px;font-weight:800;letter-spacing:.3px}
+    .subtitle{margin-top:2px;color:var(--muted);font-size:12.5px}
+
+    .top-right{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .chip{
+      display:flex;align-items:center;gap:10px;
+      padding:8px 10px;border-radius:999px;
+      border:1px solid var(--border);background:rgba(255,255,255,.03);
+      color:var(--muted);font-size:12.5px;white-space:nowrap;
+    }
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+      box-shadow:0 0 0 3px rgba(34,197,94,.16)}
+
+    /* Big battery widget in header */
+    .battery-hero{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      min-width: 260px;
+      justify-content:space-between;
+    }
+    .battery-left{
+      display:flex;flex-direction:column;gap:2px;
+    }
+    .battery-big{
+      font-size:22px;
+      font-weight:900;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+    }
+    .battery-big .pct{ color: var(--text); }
+    .battery-big .arrow{
+      font-size:18px;
+      font-weight:900;
+      color: var(--muted);
+    }
+    .battery-sub{
+      color: var(--muted);
+      font-size:12px;
+      font-weight:650;
+    }
+    .battery-bar{
+      width: 110px;
+      height: 10px;
+      border-radius: 999px;
+      overflow:hidden;
+      background: rgba(148,163,184,.12);
+      border: 1px solid rgba(148,163,184,.10);
+    }
+    .battery-bar > div{
+      height:100%;
+      width:0%;
+      background: linear-gradient(90deg, var(--accent2), rgba(34,197,94,.95));
+      transition: width .45s ease;
+    }
+
+    /* Desktop grid */
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:14px;
+    }
+    @media (max-width: 1200px){
+      .grid{grid-template-columns: repeat(2, minmax(0, 1fr));}
+      .header{grid-template-columns: 1fr;}
+      .top-right{justify-content:flex-start;}
+      .battery-hero{min-width: 0; width: 100%;}
+    }
+    @media (max-width: 820px){
+      .grid{grid-template-columns: 1fr;}
+    }
+
+    .card{
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border-radius:var(--r);padding:16px;box-shadow:var(--shadow);
+    }
+    .card h2{
+      font-size:12.5px;letter-spacing:.55px;text-transform:uppercase;
+      color:var(--muted);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;
+    }
+    .kpi{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+    .kpi .value{font-size:30px;font-weight:900}
+    .kpi .unit{font-size:13px;color:var(--muted);font-weight:800}
+
+    .rows{display:flex;flex-direction:column;gap:8px}
+    .stat{
+      display:flex;justify-content:space-between;gap:14px;
+      padding:10px 12px;border-radius:12px;
+      border:1px solid rgba(148,163,184,.12);
+      background:rgba(2,6,23,.28);
+    }
+    .stat-label{color:var(--muted);font-size:12.5px;font-weight:700}
+    .stat-value{color:var(--text);font-size:12.5px;font-weight:800;max-width:70%;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+    .progress{height:10px;border-radius:999px;overflow:hidden;
+      background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.10);margin-top:10px}
+    .progress > div{height:100%;width:0%;
+      background:linear-gradient(90deg, var(--accent2), rgba(34,197,94,.95));
+      transition:width .45s ease;border-radius:999px}
+    .progress-meta{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:12px}
+
+    .pill{
+      padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900;
+      border:1px solid transparent;width:fit-content;white-space:nowrap;
+    }
+    .pill.ok{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.30);color:#86efac}
+    .pill.bad{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.25);color:#fecaca}
+
+    /* Charts */
+    .chart-wrap{
+      height: 190px;
+      border:1px solid rgba(148,163,184,.10);
+      background:rgba(2,6,23,.18);
+      border-radius:12px;
+      padding:10px;
+    }
+
+    /* Brightness */
+    input[type="range"]{
+      width:100%;
+      -webkit-appearance:none;
+      appearance:none;
+      height:6px;
+      border-radius:999px;
+      background: rgba(148,163,184,.18);
+      outline:none;
+    }
+    input[type="range"]::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      appearance:none;
+      width:16px;height:16px;border-radius:50%;
+      background: var(--accent2);
+      border:2px solid rgba(15,23,42,.9);
+      box-shadow: 0 0 0 4px rgba(56,189,248,.18);
+      cursor:pointer;
+    }
+    input[type="range"]::-moz-range-thumb{
+      width:16px;height:16px;border-radius:50%;
+      background: var(--accent2);
+      border:2px solid rgba(15,23,42,.9);
+      cursor:pointer;
+    }
+    .btnrow{display:flex;gap:8px;margin-top:10px}
+    .btn{
+      flex:1;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(148,163,184,.16);
+      background:rgba(255,255,255,.03);
+      color:var(--text);
+      font-weight:850;
+      cursor:pointer;
+    }
+    .btn:hover{
+      border-color: rgba(56,189,248,.28);
+      background: rgba(255,255,255,.05);
+    }
+
+    .footer{display:flex;justify-content:center;margin-top:14px;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title">
+        <h1>Server Dashboard</h1>
+        <div class="subtitle">CPU • RAM • Disk • Temperature • Network • Services • IPTV</div>
+      </div>
+
+      <div class="top-right">
+        <div class="battery-hero" title="Battery status">
+          <div class="battery-left">
+            <div class="battery-big">
+              <span class="pct" id="battery-hero-pct">--%</span>
+              <span class="arrow" id="battery-hero-arrow">•</span>
+            </div>
+            <div class="battery-sub" id="battery-hero-status">--</div>
+          </div>
+          <div class="battery-bar"><div id="battery-hero-bar"></div></div>
+        </div>
+
+        <div class="chip">
+          <span class="dot" id="status-dot"></span>
+          <span>Last update:</span>
+          <span id="last-update">Never</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- CPU -->
+      <div class="card">
+        <h2><span>CPU Usage</span><span class="pill ok" id="cpu-pill">OK</span></h2>
+        <div class="kpi"><div class="value" id="cpu-kpi">--</div><div class="unit">%</div></div>
+        <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+      </div>
+
+      <!-- Memory -->
+      <div class="card">
+        <h2><span>Memory</span><span class="pill ok" id="mem-pill">OK</span></h2>
+        <div class="kpi"><div class="value" id="mem-kpi">--</div><div class="unit">%</div></div>
+        <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+        <div class="progress"><div id="mem-progress"></div></div>
+        <div class="progress-meta"><span>Used / Total</span><span id="mem-info">--</span></div>
+      </div>
+
+      <!-- Temperature -->
+      <div class="card">
+        <h2><span>Temperature</span><span class="pill ok" id="temp-pill">OK</span></h2>
+        <div class="kpi"><div class="value" id="temp-kpi">--</div><div class="unit">°C</div></div>
+        <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
+      </div>
+
+      <!-- Disk -->
+      <div class="card">
+        <h2><span>Disk</span><span class="pill ok" id="disk-pill">OK</span></h2>
+        <div class="kpi"><div class="value" id="disk-kpi">--</div><div class="unit">%</div></div>
+        <div class="chart-wrap"><canvas id="diskChart"></canvas></div>
+        <div class="progress"><div id="disk-progress"></div></div>
+        <div class="progress-meta"><span>Used / Total</span><span id="disk-info">--</span></div>
+      </div>
+
+      <!-- Network -->
+      <div class="card">
+        <h2><span>Network</span><span class="pill ok" id="net-pill">OK</span></h2>
+        <div class="rows">
+          <div class="stat"><span class="stat-label">IP address</span><span class="stat-value" id="net-ip">--</span></div>
+        </div>
+        <div class="chart-wrap" style="margin-top:10px"><canvas id="netChart"></canvas></div>
+        <div class="rows" id="network-interfaces" style="margin-top:10px"></div>
+      </div>
+
+      <!-- Brightness -->
+      <div class="card">
+        <h2><span>Brightness</span><span class="pill ok" id="bright-pill">CONTROL</span></h2>
+        <div class="kpi"><div class="value" id="brightness-kpi">--</div><div class="unit">%</div></div>
+        <input type="range" min="0" max="100" value="50" id="brightness-slider">
+        <div class="btnrow">
+          <button class="btn" onclick="setBrightness(0)">Min</button>
+          <button class="btn" onclick="setBrightness(50)">50%</button>
+          <button class="btn" onclick="setBrightness(100)">Max</button>
+        </div>
+      </div>
+
+      <!-- Services -->
+      <div class="card">
+        <h2><span>Services</span><span class="pill ok" id="svc-pill">OK</span></h2>
+        <div class="rows" id="services-list">
+          <div class="stat"><span class="stat-label">Loading</span><span class="stat-value">...</span></div>
+        </div>
+      </div>
+
+      <!-- IPTV -->
+      <div class="card">
+        <h2><span>IPTV</span><span class="pill ok" id="iptv-pill">OK</span></h2>
+        <div id="iptv-content" class="rows">
+          <div class="stat"><span class="stat-label">Username</span><span class="stat-value" id="iptv-username">--</span></div>
+          <div class="stat"><span class="stat-label">Active / Max</span><span class="stat-value" id="iptv-connections">--</span></div>
+          <div class="stat"><span class="stat-label">Status</span><span class="stat-value" id="iptv-status">--</span></div>
+          <div class="stat"><span class="stat-label">Expires</span><span class="stat-value" id="iptv-expires">--</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">Auto-refresh every 5 seconds</div>
+  </div>
+
+  <script>
+    // ------- charts -------
+    const MAX_POINTS = 60;
+    const labels = [];
+    function nowLabel(){
+      const d = new Date();
+      return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+    function pushPoint(arr, v){ arr.push(v); if(arr.length>MAX_POINTS) arr.shift(); }
+    function pushLabel(){ labels.push(nowLabel()); if(labels.length>MAX_POINTS) labels.shift(); }
+
+    function setPill(id, ok){
+      const el = document.getElementById(id);
+      el.classList.remove('ok','bad');
+      el.classList.add(ok ? 'ok' : 'bad');
+      el.textContent = ok ? 'OK' : 'ISSUE';
+    }
+
+    const chartDefaults = {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{ display:false }},
+      scales:{
+        x:{ ticks:{ color:'rgba(147,164,189,.75)', maxTicksLimit:6 }, grid:{ color:'rgba(148,163,184,.08)' } },
+        y:{ ticks:{ color:'rgba(147,164,189,.75)' }, grid:{ color:'rgba(148,163,184,.08)' } }
+      }
+    };
+
+    const cpuData=[], memData=[], tempData=[], diskData=[], netRx=[], netTx=[];
+    const cpuChart = new Chart(document.getElementById('cpuChart'), {
+      type:'line',
+      data:{ labels, datasets:[{ data:cpuData, borderColor:'#38bdf8', tension:.25, pointRadius:0 }] },
+      options:chartDefaults
+    });
+    const memChart = new Chart(document.getElementById('memChart'), {
+      type:'line',
+      data:{ labels, datasets:[{ data:memData, borderColor:'#22c55e', tension:.25, pointRadius:0 }] },
+      options:chartDefaults
+    });
+    const tempChart = new Chart(document.getElementById('tempChart'), {
+      type:'line',
+      data:{ labels, datasets:[{ data:tempData, borderColor:'#f59e0b', tension:.25, pointRadius:0 }] },
+      options:chartDefaults
+    });
+    const diskChart = new Chart(document.getElementById('diskChart'), {
+      type:'line',
+      data:{ labels, datasets:[{ data:diskData, borderColor:'#a78bfa', tension:.25, pointRadius:0 }] },
+      options:chartDefaults
+    });
+    const netChart = new Chart(document.getElementById('netChart'), {
+      type:'line',
+      data:{
+        labels,
+        datasets:[
+          { label:'RX (MB)', data:netRx, borderColor:'#38bdf8', tension:.25, pointRadius:0 },
+          { label:'TX (MB)', data:netTx, borderColor:'#22c55e', tension:.25, pointRadius:0 }
+        ]
+      },
+      options:{
+        ...chartDefaults,
+        plugins:{ legend:{ display:true, labels:{ color:'rgba(147,164,189,.85)' } } }
+      }
+    });
+
+    // ------- brightness control -------
+    let brightnessTimeout;
+    function setBrightness(value){
+      fetch(`/api/brightness/set/${value}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            document.getElementById('brightness-slider').value = value;
+            document.getElementById('brightness-kpi').textContent = Number(value).toFixed(0);
+          }
+        })
+        .catch(err => console.error('Error setting brightness:', err));
+    }
+    document.getElementById('brightness-slider').addEventListener('input', (e) => {
+      const v = e.target.value;
+      document.getElementById('brightness-kpi').textContent = Number(v).toFixed(0);
+      clearTimeout(brightnessTimeout);
+      brightnessTimeout = setTimeout(() => setBrightness(v), 450);
+    });
+
+    function batteryArrow(status){
+      const s = String(status || '').toLowerCase();
+      if (s.includes('charg')) return '↑';
+      if (s.includes('discharg')) return '↓';
+      if (s.includes('full')) return '•';
+      return '•';
+    }
+
+    function updateDashboard(){
+      fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('last-update').textContent = data.timestamp;
+
+          // Battery hero
+          const cap = Number(data.battery.capacity);
+          const capOk = Number.isFinite(cap);
+          document.getElementById('battery-hero-pct').textContent = capOk ? `${cap.toFixed(0)}%` : '--%';
+          document.getElementById('battery-hero-status').textContent = data.battery.status || '--';
+          document.getElementById('battery-hero-arrow').textContent = batteryArrow(data.battery.status);
+          document.getElementById('battery-hero-bar').style.width = capOk ? `${Math.max(0, Math.min(100, cap))}%` : '0%';
+
+          // KPIs
+          const cpu = Number(data.system.cpu_usage);
+          const mem = Number(data.system.memory?.percent);
+          const disk = Number(data.system.disk?.percent);
+          const temp = (typeof data.system.temperature === 'number') ? data.system.temperature : Number(data.system.temperature);
+
+          document.getElementById('cpu-kpi').textContent = Number.isFinite(cpu) ? cpu.toFixed(0) : '--';
+          document.getElementById('mem-kpi').textContent = Number.isFinite(mem) ? mem.toFixed(0) : '--';
+          document.getElementById('disk-kpi').textContent = Number.isFinite(disk) ? disk.toFixed(0) : '--';
+          document.getElementById('temp-kpi').textContent = Number.isFinite(temp) ? temp.toFixed(1) : '--';
+
+          // memory/disk details
+          document.getElementById('mem-progress').style.width = (Number.isFinite(mem) ? mem : 0) + '%';
+          document.getElementById('mem-info').textContent =
+            `${data.system.memory?.used ?? '--'} GB / ${data.system.memory?.total ?? '--'} GB`;
+
+          document.getElementById('disk-progress').style.width = (Number.isFinite(disk) ? disk : 0) + '%';
+          document.getElementById('disk-info').textContent =
+            `${data.system.disk?.used ?? '--'} GB / ${data.system.disk?.total ?? '--'} GB`;
+
+          // network
+          document.getElementById('net-ip').textContent = data.network.ip_address || '--';
+          let interfacesHTML = '';
+          let rxSum = 0, txSum = 0;
+          for (const [iface, stats] of Object.entries(data.network.interfaces || {})) {
+            interfacesHTML += `
+              <div class="stat">
+                <span class="stat-label">${iface}</span>
+                <span class="stat-value">↓ ${stats.bytes_recv} MB   ↑ ${stats.bytes_sent} MB</span>
+              </div>`;
+            rxSum += Number(stats.bytes_recv) || 0;
+            txSum += Number(stats.bytes_sent) || 0;
+          }
+          document.getElementById('network-interfaces').innerHTML = interfacesHTML || '';
+
+          // services
+          let servicesHTML = '';
+          let anyBad = false;
+          for (const [svc, st] of Object.entries(data.services || {})) {
+            const active = (st === 'active');
+            anyBad = anyBad || !active;
+            servicesHTML += `
+              <div class="stat">
+                <span class="stat-label">${svc}</span>
+                <span class="pill ${active ? 'ok' : 'bad'}">${st}</span>
+              </div>`;
+          }
+          document.getElementById('services-list').innerHTML = servicesHTML || `
+            <div class="stat"><span class="stat-label">No services</span><span class="stat-value">--</span></div>`;
+
+          // pills thresholds
+          setPill('cpu-pill', !(Number.isFinite(cpu) && cpu > 90));
+          setPill('mem-pill', !(Number.isFinite(mem) && mem > 85));
+          setPill('disk-pill', !(Number.isFinite(disk) && disk > 90));
+          setPill('temp-pill', !(Number.isFinite(temp) && temp > 80));
+          setPill('svc-pill', !anyBad);
+
+          // overall dot
+          const overallBad =
+            (Number.isFinite(cpu) && cpu > 95) ||
+            (Number.isFinite(mem) && mem > 92) ||
+            (Number.isFinite(disk) && disk > 95) ||
+            (Number.isFinite(temp) && temp > 85) ||
+            anyBad;
+
+          const dot = document.getElementById('status-dot');
+          dot.style.background = overallBad ? 'var(--bad)' : 'var(--accent)';
+          dot.style.boxShadow = overallBad ? '0 0 0 3px rgba(239,68,68,.18)' : '0 0 0 3px rgba(34,197,94,.16)';
+
+          // charts
+          pushLabel();
+          pushPoint(cpuData, Number.isFinite(cpu) ? cpu : null);
+          pushPoint(memData, Number.isFinite(mem) ? mem : null);
+          pushPoint(diskData, Number.isFinite(disk) ? disk : null);
+          pushPoint(tempData, Number.isFinite(temp) ? temp : null);
+          pushPoint(netRx, rxSum);
+          pushPoint(netTx, txSum);
+
+          cpuChart.update();
+          memChart.update();
+          diskChart.update();
+          tempChart.update();
+          netChart.update();
+
+          // brightness (from API)
+          const b = Number(data.brightness?.percentage);
+          if (Number.isFinite(b)) {
+            document.getElementById('brightness-kpi').textContent = b.toFixed(0);
+            // Don't hard-force slider while user drags; but this is OK for now:
+            document.getElementById('brightness-slider').value = b.toFixed(0);
+          }
+        })
+        .catch(err => console.error('Error fetching status:', err));
+
+      fetch('/api/iptv')
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            document.getElementById('iptv-username').textContent = data.username ?? '--';
+            document.getElementById('iptv-connections').textContent = `${data.active_cons} / ${data.max_connections}`;
+            document.getElementById('iptv-status').textContent = data.status ?? '--';
+            document.getElementById('iptv-expires').textContent = data.exp_date ?? '--';
+            setPill('iptv-pill', String(data.status).toLowerCase() === 'active' || String(data.status).toLowerCase() === 'enabled');
+          } else {
+            // show a clean 403 message
+            const msg = String(data.error || 'Unknown error');
+            document.getElementById('iptv-content').innerHTML =
+              `<div class="stat"><span class="stat-label">Error</span><span class="stat-value">${msg}</span></div>`;
+            setPill('iptv-pill', false);
+          }
+        })
+        .catch(err => console.error('Error fetching IPTV status:', err));
+    }
+
+    updateDashboard();
+    setInterval(updateDashboard, 100);
+  </script>
+</body>
+</html>
