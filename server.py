@@ -6,8 +6,30 @@ from datetime import datetime
 import psutil
 import socket
 from pathlib import Path
+import json
+import threading
+import time
 
 app = Flask(__name__)
+
+# Battery history configuration
+BATTERY_HISTORY_FILE = Path(__file__).parent / 'battery_history.json'
+MAX_HISTORY_ENTRIES = 144  # Keep last 24 hours (144 entries at 10-minute intervals)
+BATTERY_UPDATE_INTERVAL = 600  # Record battery every 10 minutes (600 seconds)
+battery_history = []  # Will be loaded from file on startup
+last_battery_record_time = 0  # Track last time battery was recorded
+
+# Real-time metrics history (in-memory, last 60 points)
+MAX_REALTIME_POINTS = 60
+metrics_history = {
+    'timestamps': [],
+    'cpu': [],
+    'memory': [],
+    'temperature': [],
+    'network_rx': [],
+    'network_tx': []
+}
+prev_net_bytes = None  # For calculating network rates
 
 # Load environment variables from .env file
 def load_env():
@@ -35,11 +57,62 @@ def run_command(command):
     except Exception as e:
         return f"Error: {str(e)}"
 
+def load_battery_history():
+    """Load battery history from file"""
+    global battery_history
+    try:
+        if BATTERY_HISTORY_FILE.exists():
+            with open(BATTERY_HISTORY_FILE, 'r') as f:
+                battery_history = json.load(f)
+                print(f"Loaded {len(battery_history)} battery history entries")
+        else:
+            battery_history = []
+    except Exception as e:
+        print(f"Error loading battery history: {e}")
+        battery_history = []
+
+def save_battery_history():
+    """Save battery history to file"""
+    try:
+        with open(BATTERY_HISTORY_FILE, 'w') as f:
+            json.dump(battery_history, f)
+    except Exception as e:
+        print(f"Error saving battery history: {e}")
+
+def add_battery_entry(capacity, status, force=False):
+    """Add a battery entry to history"""
+    global battery_history, last_battery_record_time
+    
+    # Only record every BATTERY_UPDATE_INTERVAL seconds unless forced
+    current_time = time.time()
+    if not force and (current_time - last_battery_record_time) < BATTERY_UPDATE_INTERVAL:
+        return
+    
+    last_battery_record_time = current_time
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'capacity': capacity,
+        'status': status
+    }
+    battery_history.append(entry)
+    
+    # Keep only last MAX_HISTORY_ENTRIES
+    if len(battery_history) > MAX_HISTORY_ENTRIES:
+        battery_history = battery_history[-MAX_HISTORY_ENTRIES:]
+    
+    # Save to file (in background to avoid blocking)
+    threading.Thread(target=save_battery_history, daemon=True).start()
+
 def get_battery_info():
     """Get battery status"""
     try:
         capacity = run_command('cat /sys/class/power_supply/qcom-battery/capacity')
         status = run_command('cat /sys/class/power_supply/qcom-battery/status')
+        
+        # Add to history if valid
+        if capacity != 'N/A' and capacity.isdigit():
+            add_battery_entry(int(capacity), status)
+        
         return {
             'capacity': capacity,
             'status': status
@@ -166,6 +239,107 @@ def get_running_services():
     
     return status
 
+def get_tmux_sessions():
+    """Get tmux sessions and their status"""
+    try:
+        # Get list of tmux sessions
+        sessions_output = run_command('tmux list-sessions -F "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}" 2>/dev/null')
+        
+        if not sessions_output or 'Error' in sessions_output or sessions_output == '':
+            return {'sessions': [], 'total': 0}
+        
+        sessions = []
+        for line in sessions_output.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('|')
+            if len(parts) >= 4:
+                session_name = parts[0]
+                created = parts[1]
+                attached = parts[2]
+                windows = parts[3]
+                
+                # Get windows info for this session
+                windows_output = run_command(f'tmux list-windows -t "{session_name}" -F "#{{window_index}}:#{{window_name}}|#{{window_active}}" 2>/dev/null')
+                window_list = []
+                if windows_output and 'Error' not in windows_output:
+                    for win_line in windows_output.strip().split('\n'):
+                        if '|' in win_line:
+                            win_info, is_active = win_line.split('|')
+                            window_list.append({
+                                'name': win_info,
+                                'active': is_active == '1'
+                            })
+                
+                # Get panes count
+                panes_count = run_command(f'tmux list-panes -t "{session_name}" 2>/dev/null | wc -l')
+                
+                # Calculate uptime
+                try:
+                    created_ts = int(created)
+                    uptime_seconds = int(time.time()) - created_ts
+                    hours = uptime_seconds // 3600
+                    minutes = (uptime_seconds % 3600) // 60
+                    if hours > 0:
+                        uptime = f"{hours}h {minutes}m"
+                    else:
+                        uptime = f"{minutes}m"
+                except:
+                    uptime = 'N/A'
+                
+                sessions.append({
+                    'name': session_name,
+                    'attached': attached != '0',
+                    'windows': int(windows) if windows.isdigit() else 0,
+                    'panes': int(panes_count.strip()) if panes_count.strip().isdigit() else 0,
+                    'uptime': uptime,
+                    'window_list': window_list
+                })
+        
+        return {
+            'sessions': sessions,
+            'total': len(sessions)
+        }
+    except Exception as e:
+        print(f"Error getting tmux sessions: {e}")
+        return {'sessions': [], 'total': 0, 'error': str(e)}
+
+def add_metrics_history(system_info, network_info):
+    """Add current metrics to history"""
+    global metrics_history, prev_net_bytes
+    
+    # Add timestamp
+    metrics_history['timestamps'].append(datetime.now().isoformat())
+    
+    # Add CPU, memory, temperature
+    metrics_history['cpu'].append(system_info.get('cpu_usage', 0))
+    metrics_history['memory'].append(system_info.get('memory', {}).get('percent', 0))
+    temp = system_info.get('temperature', 'N/A')
+    metrics_history['temperature'].append(temp if isinstance(temp, (int, float)) else 0)
+    
+    # Calculate network rates (KB/s)
+    total_rx = 0
+    total_tx = 0
+    for iface_stats in network_info.get('interfaces', {}).values():
+        total_rx += iface_stats.get('bytes_recv', 0)
+        total_tx += iface_stats.get('bytes_sent', 0)
+    
+    rx_kbs = 0
+    tx_kbs = 0
+    if prev_net_bytes:
+        time_diff = 5  # Assume 5 second intervals
+        rx_kbs = max(0, (total_rx - prev_net_bytes['rx']) / time_diff / 1024)
+        tx_kbs = max(0, (total_tx - prev_net_bytes['tx']) / time_diff / 1024)
+    
+    prev_net_bytes = {'rx': total_rx, 'tx': total_tx}
+    metrics_history['network_rx'].append(rx_kbs)
+    metrics_history['network_tx'].append(tx_kbs)
+    
+    # Keep only last MAX_REALTIME_POINTS
+    for key in metrics_history:
+        if len(metrics_history[key]) > MAX_REALTIME_POINTS:
+            metrics_history[key] = metrics_history[key][-MAX_REALTIME_POINTS:]
+
 # Routes
 @app.route('/')
 def index():
@@ -174,12 +348,18 @@ def index():
 @app.route('/api/status')
 def status():
     """Get all status information"""
+    battery = get_battery_info()
+    brightness = get_brightness()
+    system = get_system_info()
+    network = get_network_info()
+    services = get_running_services()
+    
     return jsonify({
-        'battery': get_battery_info(),
-        'brightness': get_brightness(),
-        'system': get_system_info(),
-        'network': get_network_info(),
-        'services': get_running_services(),
+        'battery': battery,
+        'brightness': brightness,
+        'system': system,
+        'network': network,
+        'services': services,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
 
@@ -187,6 +367,16 @@ def status():
 def iptv_status():
     """Get IPTV status"""
     return jsonify(get_iptv_status())
+
+@app.route('/api/battery/history')
+def battery_history_api():
+    """Get battery history"""
+    return jsonify(battery_history)
+
+@app.route('/api/metrics/history')
+def metrics_history_api():
+    """Get real-time metrics history"""
+    return jsonify(metrics_history)
 
 @app.route('/api/brightness/set/<int:value>')
 def set_brightness_api(value):
@@ -196,6 +386,11 @@ def set_brightness_api(value):
         return jsonify(result)
     return jsonify({'success': False, 'error': 'Value must be between 0 and 100'})
 
+@app.route('/api/tmux')
+def tmux_sessions():
+    """Get tmux sessions"""
+    return jsonify(get_tmux_sessions())
+
 @app.route('/api/reboot')
 def reboot():
     """Reboot system (use with caution)"""
@@ -203,8 +398,39 @@ def reboot():
     run_command('sudo reboot')
     return jsonify({'success': True, 'message': 'Rebooting...'})
 
+def background_metrics_collector():
+    """Background thread to continuously collect metrics"""
+    global last_battery_record_time
+    print("Starting background metrics collection...")
+    
+    while True:
+        try:
+            # Collect system metrics
+            system = get_system_info()
+            network = get_network_info()
+            
+            # Add to metrics history
+            add_metrics_history(system, network)
+            
+            # Check if it's time to record battery (every 10 minutes)
+            battery = get_battery_info()
+            # get_battery_info already handles the timing internally
+            
+            time.sleep(5)  # Collect every 5 seconds
+        except Exception as e:
+            print(f"Error in background collector: {e}")
+            time.sleep(5)
+
 def main():
     """Main entry point for the application"""
+    # Load battery history on startup
+    load_battery_history()
+    
+    # Start background metrics collection thread
+    collector_thread = threading.Thread(target=background_metrics_collector, daemon=True)
+    collector_thread.start()
+    
+    print(f"Starting server on port 5020...")
     app.run(host='0.0.0.0', port=5020, debug=False)
 
 if __name__ == '__main__':

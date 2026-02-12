@@ -4,211 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Server Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
-  <style>
-    :root{
-      --bg0:#070b14;
-      --border:rgba(148,163,184,.14);
-      --text:#e5e7eb;
-      --muted:#93a4bd;
-
-      --accent:#22c55e;
-      --accent2:#38bdf8;
-      --warn:#f59e0b;
-      --bad:#ef4444;
-
-      --shadow: 0 10px 30px rgba(0,0,0,.45);
-      --r:14px;
-    }
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      background:
-        radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.10), transparent 55%),
-        radial-gradient(1000px 700px at 90% 20%, rgba(34,197,94,.08), transparent 60%),
-        linear-gradient(180deg, var(--bg0), #040612 60%, #040612);
-      color:var(--text);
-      padding:22px;
-      min-height:100vh;
-    }
-    .container{max-width:1500px;margin:0 auto}
-
-    .header{
-      display:grid;
-      grid-template-columns: 1fr auto;
-      gap:16px;
-      padding:16px 18px;border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-      border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:16px;
-      align-items:center;
-    }
-    .title h1{font-size:18px;font-weight:800;letter-spacing:.3px}
-    .subtitle{margin-top:2px;color:var(--muted);font-size:12.5px}
-
-    .top-right{display:flex; gap:12px; align-items:center; justify-content:flex-end; flex-wrap:wrap;}
-    .chip{
-      display:flex;align-items:center;gap:10px;
-      padding:8px 10px;border-radius:999px;
-      border:1px solid var(--border);background:rgba(255,255,255,.03);
-      color:var(--muted);font-size:12.5px;white-space:nowrap;
-    }
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
-      box-shadow:0 0 0 3px rgba(34,197,94,.16)}
-
-    .battery-hero{
-      display:flex; align-items:center; gap:12px;
-      padding:10px 12px; border-radius:999px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      min-width: 260px;
-      justify-content:space-between;
-    }
-    .battery-left{display:flex;flex-direction:column;gap:2px}
-    .battery-big{
-      font-size:22px; font-weight:900; letter-spacing:.2px;
-      display:flex; align-items:baseline; gap:8px;
-    }
-    .battery-big .arrow{font-size:18px;font-weight:900;color:var(--muted)}
-    .battery-sub{color:var(--muted);font-size:12px;font-weight:650}
-    .battery-bar{
-      width:110px;height:10px;border-radius:999px;overflow:hidden;
-      background: rgba(148,163,184,.12);
-      border: 1px solid rgba(148,163,184,.10);
-    }
-    .battery-bar > div{
-      height:100%; width:0%;
-      background: linear-gradient(90deg, var(--accent2), rgba(34,197,94,.95));
-      transition: width .45s ease;
-    }
-
-    .grid{
-      display:grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap:14px;
-    }
-    @media (max-width: 1200px){
-      .grid{grid-template-columns: repeat(2, minmax(0, 1fr));}
-      .header{grid-template-columns: 1fr;}
-      .top-right{justify-content:flex-start;}
-      .battery-hero{min-width: 0; width: 100%;}
-    }
-    @media (max-width: 820px){
-      .grid{grid-template-columns: 1fr;}
-    }
-
-    .card{
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-      border-radius:var(--r);padding:16px;box-shadow:var(--shadow);
-    }
-    .card h2{
-      font-size:12.5px;letter-spacing:.55px;text-transform:uppercase;
-      color:var(--muted);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;
-    }
-
-    .kpi{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
-    .kpi .value{font-size:30px;font-weight:900}
-    .kpi .unit{font-size:13px;color:var(--muted);font-weight:800}
-
-    .rows{display:flex;flex-direction:column;gap:8px}
-    .stat{
-      display:flex;justify-content:space-between;gap:14px;
-      padding:10px 12px;border-radius:12px;
-      border:1px solid rgba(148,163,184,.12);
-      background:rgba(2,6,23,.28);
-    }
-    .stat-label{color:var(--muted);font-size:12.5px;font-weight:700}
-    .stat-value{color:var(--text);font-size:12.5px;font-weight:800;max-width:70%;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-    .progress{height:10px;border-radius:999px;overflow:hidden;
-      background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.10);margin-top:10px}
-    .progress > div{height:100%;width:0%;
-      background:linear-gradient(90deg, var(--accent2), rgba(34,197,94,.95));
-      transition:width .45s ease;border-radius:999px}
-    .progress-meta{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:12px}
-
-    .pill{
-      padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900;
-      border:1px solid transparent;width:fit-content;white-space:nowrap;
-    }
-    .pill.ok{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.30);color:#86efac}
-    .pill.bad{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.25);color:#fecaca}
-
-    .chart-wrap{
-      height: 190px;
-      border:1px solid rgba(148,163,184,.10);
-      background:rgba(2,6,23,.18);
-      border-radius:12px;
-      padding:10px;
-      position: relative;
-    }
-
-    .gauge-wrap{ 
-      padding: 10px;
-      height: 220px !important;
-      overflow: visible !important;
-    }
-
-    .gauge-wrap canvas{ 
-      width: 100% !important; 
-      height: 100% !important; 
-      display: block;
-    }
-
-    .gauge-center{
-      position: absolute;
-      left: 50%;
-      top: 65%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
-      z-index: 10;
-    }
-
-    /* Brightness */
-    input[type="range"]{
-      width:100%;
-      -webkit-appearance:none;
-      appearance:none;
-      height:6px;
-      border-radius:999px;
-      background: rgba(148,163,184,.18);
-      outline:none;
-    }
-    input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance:none;
-      appearance:none;
-      width:16px;height:16px;border-radius:50%;
-      background: var(--accent2);
-      border:2px solid rgba(15,23,42,.9);
-      box-shadow: 0 0 0 4px rgba(56,189,248,.18);
-      cursor:pointer;
-    }
-    input[type="range"]::-moz-range-thumb{
-      width:16px;height:16px;border-radius:50%;
-      background: var(--accent2);
-      border:2px solid rgba(15,23,42,.9);
-      cursor:pointer;
-    }
-    .btnrow{display:flex;gap:8px;margin-top:10px}
-    .btn{
-      flex:1;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(148,163,184,.16);
-      background:rgba(255,255,255,.03);
-      color:var(--text);
-      font-weight:850;
-      cursor:pointer;
-    }
-    .btn:hover{
-      border-color: rgba(56,189,248,.28);
-      background: rgba(255,255,255,.05);
-    }
-
-    .footer{display:flex;justify-content:center;margin-top:14px;color:var(--muted);font-size:12px}
-  </style>
 </head>
 
 <body>
@@ -216,7 +13,6 @@
     <div class="header">
       <div class="title">
         <h1>Server Dashboard</h1>
-        <div class="subtitle">CPU • RAM • Disk • Temperature • Network • Services • IPTV</div>
       </div>
 
       <div class="top-right">
@@ -239,82 +35,150 @@
       </div>
     </div>
 
-    <div class="grid">
-      <!-- CPU (historic line) -->
-      <div class="card">
-        <h2><span>CPU Usage</span><span class="pill ok" id="cpu-pill">OK</span></h2>
-        <div class="kpi"><div class="value" id="cpu-kpi">--</div><div class="unit">%</div></div>
-        <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+    <div class="main-layout">
+      <!-- Sidebar Navigation -->
+      <div class="sidebar">
+        <div class="sidebar-title">Navigation</div>
+        <div class="nav-item active" onclick="switchWindow('metrics')">
+          <span class="nav-icon">📊</span>
+          <span>System Metrics</span>
+        </div>
+        <div class="nav-item" onclick="switchWindow('controls')">
+          <span class="nav-icon">⚙️</span>
+          <span>Controls & Services</span>
+        </div>
+        <div class="nav-item" onclick="switchWindow('tmux')">
+          <span class="nav-icon">🖥️</span>
+          <span>Tmux Sessions</span>
+        </div>
       </div>
 
-      <!-- Memory (historic line) -->
-      <div class="card">
-        <h2><span>Memory</span><span class="pill ok" id="mem-pill">OK</span></h2>
-        <div class="kpi"><div class="value" id="mem-kpi">--</div><div class="unit">%</div></div>
-        <div class="chart-wrap"><canvas id="memChart"></canvas></div>
-        <div class="progress"><div id="mem-progress"></div></div>
-        <div class="progress-meta"><span>Used / Total</span><span id="mem-info">--</span></div>
-      </div>
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- System Metrics Window -->
+        <div class="window active" id="window-metrics">
+          <div class="section">
+            <div class="section-title">System Metrics</div>
+            <div class="grid">
+              <!-- CPU (historic line) -->
+              <div class="card">
+                <h2><span>CPU Usage</span><span class="pill ok" id="cpu-pill">OK</span></h2>
+                <div class="kpi"><div class="value" id="cpu-kpi">--</div><div class="unit">%</div></div>
+                <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+              </div>
 
-      <!-- Temperature (historic line) -->
-      <div class="card">
-        <h2><span>Temperature</span><span class="pill ok" id="temp-pill">OK</span></h2>
-        <div class="kpi"><div class="value" id="temp-kpi">--</div><div class="unit">°C</div></div>
-        <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
-      </div>
+              <!-- Memory (historic line) -->
+              <div class="card">
+                <h2><span>Memory</span><span class="pill ok" id="mem-pill">OK</span></h2>
+                <div class="kpi"><div class="value" id="mem-kpi">--</div><div class="unit">%</div></div>
+                <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+                <div class="progress"><div id="mem-progress"></div></div>
+                <div class="progress-meta"><span>Used / Total</span><span id="mem-info">--</span></div>
+              </div>
 
-      <!-- Disk (speedometer-like gauge) -->
-      <div class="card">
-        <h2><span>Disk</span><span class="pill ok" id="disk-pill">OK</span></h2>
-        <div class="chart-wrap gauge-wrap" style="height:220px; position:relative; overflow:visible;">
-          <canvas id="diskGauge"></canvas>
-          <div class="gauge-center">
-            <div class="big"><span id="disk-kpi">--</span>%</div>
-            <div class="small" id="disk-info">--</div>
+              <!-- Temperature (historic line) -->
+              <div class="card">
+                <h2><span>Temperature</span><span class="pill ok" id="temp-pill">OK</span></h2>
+                <div class="kpi"><div class="value" id="temp-kpi">--</div><div class="unit">°C</div></div>
+                <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
+              </div>
+
+              <!-- Battery History (historic line) -->
+              <div class="card">
+                <h2><span>Battery History</span><span class="pill ok" id="battery-pill">HISTORY</span></h2>
+                <div class="kpi"><div class="value" id="battery-hist-kpi">--</div><div class="unit">%</div></div>
+                <div class="chart-wrap"><canvas id="batteryChart"></canvas></div>
+              </div>
+
+              <!-- Disk (speedometer-like gauge) -->
+              <div class="card">
+                <h2><span>Disk</span><span class="pill ok" id="disk-pill">OK</span></h2>
+                <div class="chart-wrap gauge-wrap" style="height:220px; position:relative; overflow:visible;">
+                  <canvas id="diskGauge"></canvas>
+                  <div class="gauge-center">
+                    <div class="big"><span id="disk-kpi">--</span>%</div>
+                    <div class="small" id="disk-info">--</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Network (rate line KB/s) -->
+              <div class="card">
+                <h2><span>Network</span><span class="pill ok" id="net-pill">OK</span></h2>
+                <div class="rows">
+                  <div class="stat"><span class="stat-label">IP address</span><span class="stat-value" id="net-ip">--</span></div>
+                </div>
+                <div class="chart-wrap" style="margin-top:10px"><canvas id="netChart"></canvas></div>
+                <div class="rows" id="network-interfaces" style="margin-top:10px"></div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="progress"><div id="disk-progress"></div></div>
-        <div class="progress-meta"><span>Used / Total</span><span id="disk-info2">--</span></div>
-      </div>
 
-      <!-- Network (rate line KB/s) -->
-      <div class="card">
-        <h2><span>Network</span><span class="pill ok" id="net-pill">OK</span></h2>
-        <div class="rows">
-          <div class="stat"><span class="stat-label">IP address</span><span class="stat-value" id="net-ip">--</span></div>
+        <!-- Controls & Services Window -->
+        <div class="window" id="window-controls">
+          <div class="section">
+            <div class="section-title">Controls & Services</div>
+            <div class="grid">
+              <!-- Services -->
+              <div class="card">
+                <h2><span>Services</span><span class="pill ok" id="svc-pill">OK</span></h2>
+                <div class="rows" id="services-list">
+                  <div class="stat"><span class="stat-label">Loading</span><span class="stat-value">...</span></div>
+                </div>
+              </div>
+
+              <!-- IPTV -->
+              <div class="card">
+                <h2><span>IPTV</span><span class="pill ok" id="iptv-pill">OK</span></h2>
+                <div id="iptv-content" class="rows">
+                  <div class="stat"><span class="stat-label">Username</span><span class="stat-value" id="iptv-username">--</span></div>
+                  <div class="stat"><span class="stat-label">Active / Max</span><span class="stat-value" id="iptv-connections">--</span></div>
+                  <div class="stat"><span class="stat-label">Status</span><span class="stat-value" id="iptv-status">--</span></div>
+                  <div class="stat"><span class="stat-label">Expires</span><span class="stat-value" id="iptv-expires">--</span></div>
+                </div>
+              </div>
+
+              <!-- Brightness -->
+              <div class="card">
+                <h2><span>Brightness</span><span class="pill ok" id="bright-pill">CONTROL</span></h2>
+                <div class="kpi"><div class="value" id="brightness-kpi">--</div><div class="unit">%</div></div>
+                <input type="range" min="0" max="100" value="50" id="brightness-slider">
+                <div class="btnrow">
+                  <button class="btn" onclick="setBrightness(0)">Min</button>
+                  <button class="btn" onclick="setBrightness(50)">50%</button>
+                  <button class="btn" onclick="setBrightness(100)">Max</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="chart-wrap" style="margin-top:10px"><canvas id="netChart"></canvas></div>
-        <div class="rows" id="network-interfaces" style="margin-top:10px"></div>
-      </div>
 
-      <!-- Brightness -->
-      <div class="card">
-        <h2><span>Brightness</span><span class="pill ok" id="bright-pill">CONTROL</span></h2>
-        <div class="kpi"><div class="value" id="brightness-kpi">--</div><div class="unit">%</div></div>
-        <input type="range" min="0" max="100" value="50" id="brightness-slider">
-        <div class="btnrow">
-          <button class="btn" onclick="setBrightness(0)">Min</button>
-          <button class="btn" onclick="setBrightness(50)">50%</button>
-          <button class="btn" onclick="setBrightness(100)">Max</button>
-        </div>
-      </div>
-
-      <!-- Services -->
-      <div class="card">
-        <h2><span>Services</span><span class="pill ok" id="svc-pill">OK</span></h2>
-        <div class="rows" id="services-list">
-          <div class="stat"><span class="stat-label">Loading</span><span class="stat-value">...</span></div>
-        </div>
-      </div>
-
-      <!-- IPTV -->
-      <div class="card">
-        <h2><span>IPTV</span><span class="pill ok" id="iptv-pill">OK</span></h2>
-        <div id="iptv-content" class="rows">
-          <div class="stat"><span class="stat-label">Username</span><span class="stat-value" id="iptv-username">--</span></div>
-          <div class="stat"><span class="stat-label">Active / Max</span><span class="stat-value" id="iptv-connections">--</span></div>
-          <div class="stat"><span class="stat-label">Status</span><span class="stat-value" id="iptv-status">--</span></div>
-          <div class="stat"><span class="stat-label">Expires</span><span class="stat-value" id="iptv-expires">--</span></div>
+        <!-- Tmux Sessions Window -->
+        <div class="window" id="window-tmux">
+          <div class="section">
+            <div class="section-title">Tmux Sessions</div>
+            <div class="grid">
+              <!-- Tmux Overview -->
+              <div class="card">
+                <h2><span>Overview</span><span class="pill ok" id="tmux-pill">OK</span></h2>
+                <div class="rows">
+                  <div class="stat"><span class="stat-label">Total Sessions</span><span class="stat-value" id="tmux-total">--</span></div>
+                  <div class="stat"><span class="stat-label">Active Sessions</span><span class="stat-value" id="tmux-active">--</span></div>
+                  <div class="stat"><span class="stat-label">Total Windows</span><span class="stat-value" id="tmux-windows">--</span></div>
+                  <div class="stat"><span class="stat-label">Total Panes</span><span class="stat-value" id="tmux-panes">--</span></div>
+                </div>
+              </div>
+              
+              <!-- Session List -->
+              <div class="card" style="grid-column: span 2;">
+                <h2><span>Sessions</span></h2>
+                <div id="tmux-sessions-list">
+                  <div class="stat"><span class="stat-label">Loading...</span><span class="stat-value">--</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -322,309 +186,6 @@
     <div class="footer">Auto-refresh every 5 seconds</div>
   </div>
 
-  <script>
-    const REFRESH_MS = 5000;
-    const MAX_POINTS = 60;
-
-    // ---- helpers ----
-    function setPill(id, ok){
-      const el = document.getElementById(id);
-      el.classList.remove('ok','bad');
-      el.classList.add(ok ? 'ok' : 'bad');
-      el.textContent = ok ? 'OK' : 'ISSUE';
-    }
-
-    // Fix arrow logic: check "discharg" before "charg" so "Discharging" never matches "charg" first.
-    function batteryArrow(status){
-      const s = String(status || '').trim().toLowerCase();
-      if (s.includes('discharg')) return '↓';
-      if (s.includes('charg')) return '↑';
-      if (s.includes('full')) return '•';
-      return '•';
-    }
-
-    // ---- history helpers ----
-    const labels = [];
-    function nowLabel(){
-      const d = new Date();
-      return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    }
-    function pushLabel(){
-      labels.push(nowLabel());
-      if (labels.length > MAX_POINTS) labels.shift();
-    }
-    function pushPoint(arr, v){
-      arr.push(v);
-      if (arr.length > MAX_POINTS) arr.shift();
-    }
-
-    const chartDefaults = {
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
-      plugins:{ legend:{ display:false }},
-      scales:{
-        x:{ ticks:{ color:'rgba(147,164,189,.75)', maxTicksLimit:6 }, grid:{ color:'rgba(148,163,184,.08)' } },
-        y:{ ticks:{ color:'rgba(147,164,189,.75)' }, grid:{ color:'rgba(148,163,184,.08)' } }
-      }
-    };
-
-    // ---- line charts (historic) ----
-    const cpuData=[], memData=[], tempData=[];
-    const cpuChart = new Chart(document.getElementById('cpuChart'), {
-      type:'line',
-      data:{ labels, datasets:[{ data:cpuData, borderColor:'#38bdf8', tension:.25, pointRadius:0 }] },
-      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, suggestedMin: 0, suggestedMax: 100 } } }
-    });
-    const memChart = new Chart(document.getElementById('memChart'), {
-      type:'line',
-      data:{ labels, datasets:[{ data:memData, borderColor:'#22c55e', tension:.25, pointRadius:0 }] },
-      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, suggestedMin: 0, suggestedMax: 100 } } }
-    });
-    const tempChart = new Chart(document.getElementById('tempChart'), {
-      type:'line',
-      data:{ labels, datasets:[{ data:tempData, borderColor:'#f59e0b', tension:.25, pointRadius:0 }] },
-      options: chartDefaults
-    });
-
-    // ---- disk gauge ----
-    function makeSpeedometerGauge(canvas, color){
-      const START_DEG = -140;
-      const ARC_DEG = 280;
-      return new Chart(canvas, {
-        type: 'doughnut',
-        data: {
-          datasets: [{
-            data: [0, 100],
-            backgroundColor: [color, 'rgba(148,163,184,.14)'],
-            borderWidth: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: true,
-          aspectRatio: 2,  // ← KEY: Makes it wider than tall
-          animation: false,
-          cutout: '75%',
-          rotation: (START_DEG * Math.PI) / 180,
-          circumference: (ARC_DEG * Math.PI) / 180,
-          layout: { 
-            padding: { 
-              top: 10, 
-              left: 20, 
-              right: 20, 
-              bottom: 0 
-            } 
-          },
-          plugins: { 
-            legend: { display: false }, 
-            tooltip: { enabled: false } 
-          }
-        }
-      });
-    }
-
-    function setSpeedometerGauge(chart, percent){
-      let p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
-      if (p > 0 && p < 2) p = 2; // minimum visibility
-      chart.data.datasets[0].data = [p, 100 - p];
-      chart.update();
-    }
-
-    const diskGauge = makeSpeedometerGauge(document.getElementById('diskGauge'), '#a78bfa');
-
-    // ---- network rate chart ----
-    const netRx = [], netTx = [];
-    const netChart = new Chart(document.getElementById('netChart'), {
-      type:'line',
-      data:{
-        labels,
-        datasets:[
-          { label:'RX (KB/s)', data:netRx, borderColor:'#38bdf8', tension:.25, pointRadius:0 },
-          { label:'TX (KB/s)', data:netTx, borderColor:'#22c55e', tension:.25, pointRadius:0 }
-        ]
-      },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        plugins:{ legend:{ display:true, labels:{ color:'rgba(147,164,189,.85)' } } },
-        scales: chartDefaults.scales
-      }
-    });
-
-    // ---- brightness (don’t jump while dragging) ----
-    let brightnessTimeout;
-    let userDraggingBrightness = false;
-    const slider = document.getElementById('brightness-slider');
-
-    slider.addEventListener('pointerdown', () => userDraggingBrightness = true);
-    slider.addEventListener('pointerup', () => userDraggingBrightness = false);
-    slider.addEventListener('pointercancel', () => userDraggingBrightness = false);
-    slider.addEventListener('touchstart', () => userDraggingBrightness = true, {passive:true});
-    slider.addEventListener('touchend', () => userDraggingBrightness = false);
-
-    function setBrightness(value){
-      fetch(`/api/brightness/set/${value}`)
-        .then(r => r.json())
-        .then(data => {
-          if (!data.success) console.error("Brightness error:", data.error);
-        })
-        .catch(err => console.error('Error setting brightness:', err));
-    }
-
-    slider.addEventListener('input', (e) => {
-      const v = Number(e.target.value);
-      document.getElementById('brightness-kpi').textContent = v.toFixed(0);
-      clearTimeout(brightnessTimeout);
-      brightnessTimeout = setTimeout(() => setBrightness(v), 450);
-    });
-
-    // ---- network delta state (backend returns MB totals) ----
-    let prevNetTotals = null; // { rxMB, txMB, ts }
-
-    function updateDashboard(){
-      fetch('/api/status')
-        .then(r => r.json())
-        .then(data => {
-          document.getElementById('last-update').textContent = data.timestamp;
-
-          // Battery hero
-          const cap = Number(data.battery.capacity);
-          const capOk = Number.isFinite(cap);
-          document.getElementById('battery-hero-pct').textContent = capOk ? `${cap.toFixed(0)}%` : '--%';
-          document.getElementById('battery-hero-status').textContent = data.battery.status || '--';
-          document.getElementById('battery-hero-arrow').textContent = batteryArrow(data.battery.status);
-          document.getElementById('battery-hero-bar').style.width = capOk ? `${Math.max(0, Math.min(100, cap))}%` : '0%';
-
-          // Current metrics
-          const cpu = Number(data.system.cpu_usage);
-          const mem = Number(data.system.memory?.percent);
-          const disk = Number(data.system.disk?.percent);
-          const temp = (typeof data.system.temperature === 'number') ? data.system.temperature : Number(data.system.temperature);
-
-          document.getElementById('cpu-kpi').textContent = Number.isFinite(cpu) ? cpu.toFixed(0) : '--';
-          document.getElementById('mem-kpi').textContent = Number.isFinite(mem) ? mem.toFixed(0) : '--';
-          document.getElementById('disk-kpi').textContent = Number.isFinite(disk) ? disk.toFixed(0) : '--';
-          document.getElementById('temp-kpi').textContent = Number.isFinite(temp) ? temp.toFixed(1) : '--';
-
-          // Disk gauge
-          setSpeedometerGauge(diskGauge, disk);
-
-          // memory/disk details
-          document.getElementById('mem-progress').style.width = (Number.isFinite(mem) ? mem : 0) + '%';
-          document.getElementById('mem-info').textContent =
-            `${data.system.memory?.used ?? '--'} GB / ${data.system.memory?.total ?? '--'} GB`;
-
-          document.getElementById('disk-progress').style.width = (Number.isFinite(disk) ? disk : 0) + '%';
-          const diskInfo = `${data.system.disk?.used ?? '--'} GB / ${data.system.disk?.total ?? '--'} GB`;
-          document.getElementById('disk-info').textContent = diskInfo;
-          document.getElementById('disk-info2').textContent = diskInfo;
-
-          // Network
-          document.getElementById('net-ip').textContent = data.network.ip_address || '--';
-          let interfacesHTML = '';
-          let rxMB = 0, txMB = 0;
-          for (const [iface, stats] of Object.entries(data.network.interfaces || {})) {
-            const rmb = Number(stats.bytes_recv) || 0;
-            const tmb = Number(stats.bytes_sent) || 0;
-            rxMB += rmb;
-            txMB += tmb;
-            interfacesHTML += `
-              <div class="stat">
-                <span class="stat-label">${iface}</span>
-                <span class="stat-value">↓ ${rmb.toFixed(2)} MB   ↑ ${tmb.toFixed(2)} MB</span>
-              </div>`;
-          }
-          document.getElementById('network-interfaces').innerHTML = interfacesHTML || '';
-
-          // KB/s from delta MB
-          const now = Date.now();
-          let rxKBs = 0, txKBs = 0;
-          if (prevNetTotals) {
-            const dt = Math.max(1, (now - prevNetTotals.ts) / 1000);
-            rxKBs = Math.max(0, ((rxMB - prevNetTotals.rxMB) / dt) * 1024);
-            txKBs = Math.max(0, ((txMB - prevNetTotals.txMB) / dt) * 1024);
-          }
-          prevNetTotals = { rxMB, txMB, ts: now };
-
-          // Services
-          let servicesHTML = '';
-          let anyBad = false;
-          for (const [svc, st] of Object.entries(data.services || {})) {
-            const active = (st === 'active');
-            anyBad = anyBad || !active;
-            servicesHTML += `
-              <div class="stat">
-                <span class="stat-label">${svc}</span>
-                <span class="pill ${active ? 'ok' : 'bad'}">${st}</span>
-              </div>`;
-          }
-          document.getElementById('services-list').innerHTML = servicesHTML || `
-            <div class="stat"><span class="stat-label">No services</span><span class="stat-value">--</span></div>`;
-
-          // Threshold pills
-          setPill('cpu-pill', !(Number.isFinite(cpu) && cpu > 90));
-          setPill('mem-pill', !(Number.isFinite(mem) && mem > 85));
-          setPill('disk-pill', !(Number.isFinite(disk) && disk > 90));
-          setPill('temp-pill', !(Number.isFinite(temp) && temp > 80));
-          setPill('svc-pill', !anyBad);
-
-          // Overall dot
-          const overallBad =
-            (Number.isFinite(cpu) && cpu > 95) ||
-            (Number.isFinite(mem) && mem > 92) ||
-            (Number.isFinite(disk) && disk > 95) ||
-            (Number.isFinite(temp) && temp > 85) ||
-            anyBad;
-
-          const dot = document.getElementById('status-dot');
-          dot.style.background = overallBad ? 'var(--bad)' : 'var(--accent)';
-          dot.style.boxShadow = overallBad ? '0 0 0 3px rgba(239,68,68,.18)' : '0 0 0 3px rgba(34,197,94,.16)';
-
-          // Brightness (sync, but do not overwrite while dragging)
-          const b = Number(data.brightness?.percentage);
-          if (Number.isFinite(b)) {
-            document.getElementById('brightness-kpi').textContent = b.toFixed(0);
-            if (!userDraggingBrightness) slider.value = b.toFixed(0);
-          }
-
-          // ---- push historic points (CPU/MEM/TEMP + NET rate) ----
-          pushLabel();
-          pushPoint(cpuData, Number.isFinite(cpu) ? cpu : null);
-          pushPoint(memData, Number.isFinite(mem) ? mem : null);
-          pushPoint(tempData, Number.isFinite(temp) ? temp : null);
-          pushPoint(netRx, rxKBs);
-          pushPoint(netTx, txKBs);
-
-          cpuChart.update();
-          memChart.update();
-          tempChart.update();
-          netChart.update();
-        })
-        .catch(err => console.error('Error fetching status:', err));
-
-      fetch('/api/iptv')
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            document.getElementById('iptv-username').textContent = data.username ?? '--';
-            document.getElementById('iptv-connections').textContent = `${data.active_cons} / ${data.max_connections}`;
-            document.getElementById('iptv-status').textContent = data.status ?? '--';
-            document.getElementById('iptv-expires').textContent = data.exp_date ?? '--';
-            setPill('iptv-pill', String(data.status).toLowerCase() === 'active' || String(data.status).toLowerCase() === 'enabled');
-          } else {
-            const msg = String(data.error || 'Unknown error');
-            document.getElementById('iptv-content').innerHTML =
-              `<div class="stat"><span class="stat-label">Error</span><span class="stat-value">${msg}</span></div>`;
-            setPill('iptv-pill', false);
-          }
-        })
-        .catch(err => console.error('Error fetching IPTV status:', err));
-    }
-
-    updateDashboard();
-    setInterval(updateDashboard, REFRESH_MS);
-  </script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
