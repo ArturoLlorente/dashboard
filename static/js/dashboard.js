@@ -1,17 +1,72 @@
 const REFRESH_MS = 5000;
 const MAX_POINTS = 60;
 
+// ---- Quick stats update (always visible) ----
+function updateQuickStats() {
+  fetch('/api/quick-stats')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('last-update').textContent = data.timestamp;
+      
+      // Update battery hero
+      const cap = Number(data.battery.capacity);
+      const capOk = Number.isFinite(cap);
+      document.getElementById('battery-hero-pct').textContent = capOk ? `${cap.toFixed(0)}%` : '--%';
+      document.getElementById('battery-hero-status').textContent = data.battery.status || '--';
+      document.getElementById('battery-hero-arrow').textContent = batteryArrow(data.battery.status);
+      document.getElementById('battery-hero-bar').style.width = capOk ? `${Math.max(0, Math.min(100, cap))}%` : '0%';
+      
+      // Update quick stats
+      const cpu = Number(data.cpu);
+      const mem = Number(data.memory);
+      const temp = Number(data.temperature);
+      
+      document.getElementById('quick-cpu').textContent = Number.isFinite(cpu) ? `${cpu.toFixed(0)}%` : '--%';
+      document.getElementById('quick-mem').textContent = Number.isFinite(mem) ? `${mem.toFixed(0)}%` : '--%';
+      document.getElementById('quick-temp').textContent = Number.isFinite(temp) ? `${temp.toFixed(1)}°C` : '--°C';
+      
+      // Update status dot
+      const overallBad = (Number.isFinite(cpu) && cpu > 95) || (Number.isFinite(mem) && mem > 92) || (Number.isFinite(temp) && temp > 85);
+      const dot = document.getElementById('status-dot');
+      dot.style.background = overallBad ? 'var(--bad)' : 'var(--accent)';
+      dot.style.boxShadow = overallBad ? '0 0 0 3px rgba(239,68,68,.18)' : '0 0 0 3px rgba(34,197,94,.16)';
+    })
+    .catch(err => console.error('Error fetching quick stats:', err));
+}
+
 // ---- window switching ----
+let currentWindow = 'metrics';
+
 function switchWindow(windowName) {
   // Hide all windows
   document.querySelectorAll('.window').forEach(w => w.classList.remove('active'));
   // Remove active from all nav items
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  
+
   // Show selected window
   document.getElementById('window-' + windowName).classList.add('active');
-  // Activate corresponding nav item
-  event.currentTarget.classList.add('active');
+  // Activate corresponding nav item via data-window attribute
+  const navEl = document.querySelector(`.nav-item[data-window="${windowName}"]`);
+  if (navEl) navEl.classList.add('active');
+  
+  currentWindow = windowName;
+
+  // Load window-specific data
+  if (windowName === 'rally') {
+    loadRallyBotData();
+  } else if (windowName === 'tmux') {
+    updateTmux();
+  } else if (windowName === 'metrics') {
+    updateDashboard();
+  } else if (windowName === 'controls') {
+    updateDashboard();
+  }
+
+  // Terminal lock/unlock
+  if (windowName === 'terminal') {
+    if (termToken) termShowUI();
+    else termShowLock();
+  }
 }
 
 // ---- helpers ----
@@ -79,12 +134,12 @@ const cpuChart = new Chart(document.getElementById('cpuChart'), {
 const memChart = new Chart(document.getElementById('memChart'), {
   type:'line',
   data:{ labels, datasets:[{ data:memData, borderColor:'#22c55e', tension:.25, pointRadius:0 }] },
-  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } } }
+  options: chartDefaults
 });
 const tempChart = new Chart(document.getElementById('tempChart'), {
   type:'line',
   data:{ labels, datasets:[{ data:tempData, borderColor:'#f59e0b', tension:.25, pointRadius:0 }] },
-  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } } }
+  options: chartDefaults
 });
 
 // ---- battery history chart ----
@@ -381,6 +436,26 @@ function updateDashboard(){
       // Battery history KPI
       document.getElementById('battery-hist-kpi').textContent = capOk ? cap.toFixed(0) : '--';
 
+      // Battery life estimate
+      const est = data.battery_estimate;
+      let estText = '';
+      let estCardText = '';
+      if (est) {
+        const rate = est.rate_per_hour ? `${est.rate_per_hour}%/h` : '';
+        if (est.status === 'discharging' && est.estimate !== 'Stable') {
+          estText = `~${est.estimate} left`;
+          estCardText = `⬇ ${rate} · ~${est.estimate} remaining`;
+        } else if (est.status === 'charging' && est.estimate !== 'Stable') {
+          estText = `~${est.estimate} to full`;
+          estCardText = `⬆ ${rate} · ~${est.estimate} to full`;
+        } else if (est.estimate === 'Stable') {
+          estText = 'Stable';
+          estCardText = 'Drain rate: 0%/h';
+        }
+      }
+      document.getElementById('battery-hero-estimate').textContent = estText;
+      document.getElementById('battery-estimate-card').textContent = estCardText;
+
       // Current metrics
       const cpu = Number(data.system.cpu_usage);
       const mem = Number(data.system.memory?.percent);
@@ -510,13 +585,598 @@ function updateDashboard(){
     .catch(err => console.error('Error fetching IPTV status:', err));
 }
 
+// ---- Smart refresh based on current window ----
+function updateDiskQuickStat() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(data => {
+      const disk = Number(data.system.disk?.percent);
+      document.getElementById('quick-disk').textContent = Number.isFinite(disk) ? `${disk.toFixed(0)}%` : '--%';
+    })
+    .catch(err => console.error('Error fetching disk stats:', err));
+}
+
+function smartRefresh() {
+  // Always update quick stats (they're always visible)
+  updateQuickStats();
+  updateDiskQuickStat();
+  
+  // Update only the current window's data
+  if (currentWindow === 'metrics' || currentWindow === 'controls') {
+    updateDashboard();
+  } else if (currentWindow === 'tmux') {
+    updateTmux();
+  }
+  // Rally bot doesn't need auto-refresh (user-driven filters)
+  // Terminal doesn't need auto-refresh (user-driven commands)
+}
+
 // Load battery history on startup and refresh every 5 minutes
 loadBatteryHistory();
 setInterval(loadBatteryHistory, 300000);
 
-// Load metrics history on startup, then start live updates
+// Load metrics history on startup, then start smart updates
 loadMetricsHistory();
 updateDashboard();
-updateTmux();
-setInterval(updateDashboard, REFRESH_MS);
-setInterval(updateTmux, REFRESH_MS);
+setInterval(smartRefresh, REFRESH_MS);
+
+// ---- Terminal ----
+let termToken = sessionStorage.getItem('termToken') || null;
+let termCwd   = sessionStorage.getItem('termCwd')   || '~';
+let termHistory = [];   // command history
+let termHistIdx = -1;   // navigation index (-1 = live input)
+let termPendingSave = '';// saved live input while navigating history
+
+function termSetCwd(cwd) {
+  termCwd = cwd;
+  sessionStorage.setItem('termCwd', cwd);
+  const shortCwd = cwd.replace(/^\/home\/[^/]+/, '~');
+  document.getElementById('term-cwd').textContent = shortCwd;
+  document.getElementById('term-prompt').textContent = shortCwd + ' $';
+}
+
+function termAppend(text, cls) {
+  const body = document.getElementById('term-body');
+  const lines = String(text).split('\n');
+  lines.forEach(line => {
+    const el = document.createElement('div');
+    el.className = 'term-line ' + (cls || 'out');
+    el.textContent = line;
+    body.appendChild(el);
+  });
+  body.scrollTop = body.scrollHeight;
+}
+
+function termAppendCmd(cmd) {
+  const body = document.getElementById('term-body');
+  const el = document.createElement('div');
+  el.className = 'term-line cmd';
+  const ps1 = document.createElement('span');
+  ps1.className = 'term-ps1';
+  ps1.textContent = termCwd.replace(/^\/home\/[^/]+/, '~') + ' $ ';
+  el.appendChild(ps1);
+  el.appendChild(document.createTextNode(cmd));
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+}
+
+function termShowUI() {
+  document.getElementById('term-lock').style.display = 'none';
+  document.getElementById('term-ui').style.display   = 'block';
+  termSetCwd(termCwd);
+  if (document.getElementById('term-body').childElementCount === 0) {
+    termAppend('Connected. Type commands below.', 'info');
+  }
+  setTimeout(() => document.getElementById('term-input').focus(), 50);
+}
+
+function termShowLock() {
+  document.getElementById('term-lock').style.display = 'block';
+  document.getElementById('term-ui').style.display   = 'none';
+  document.getElementById('term-password').value = '';
+  document.getElementById('term-login-error').textContent = '';
+}
+
+// On page load: restore session if token exists
+if (termToken) {
+  // Validate token by doing a dummy exec
+  fetch('/api/terminal/exec', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({token: termToken, command: ''})
+  }).then(r => {
+    if (r.ok) termShowUI();
+    else { termToken = null; sessionStorage.removeItem('termToken'); }
+  }).catch(() => {});
+}
+
+function termLogin(e) {
+  e.preventDefault();
+  const pw = document.getElementById('term-password').value;
+  document.getElementById('term-login-error').textContent = '';
+  fetch('/api/terminal/login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({password: pw})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      termToken = data.token;
+      sessionStorage.setItem('termToken', termToken);
+      if (data.cwd) { termCwd = data.cwd; sessionStorage.setItem('termCwd', data.cwd); }
+      termShowUI();
+    } else {
+      document.getElementById('term-login-error').textContent = data.error || 'Login failed';
+      document.getElementById('term-password').value = '';
+      document.getElementById('term-password').focus();
+    }
+  })
+  .catch(() => { document.getElementById('term-login-error').textContent = 'Network error'; });
+}
+
+function termLogout() {
+  fetch('/api/terminal/logout', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({token: termToken})
+  }).catch(() => {});
+  termToken = null;
+  sessionStorage.removeItem('termToken');
+  document.getElementById('term-body').innerHTML = '';
+  termShowLock();
+}
+
+function termExec(cmd) {
+  termAppendCmd(cmd);
+  const input = document.getElementById('term-input');
+  input.disabled = true;
+
+  fetch('/api/terminal/exec', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({token: termToken, command: cmd})
+  })
+  .then(r => {
+    if (r.status === 401) { termLogout(); throw new Error('session_expired'); }
+    return r.json();
+  })
+  .then(data => {
+    if (data.output) termAppend(data.output, 'out');
+    if (data.cwd) termSetCwd(data.cwd);
+    input.disabled = false;
+    input.focus();
+  })
+  .catch(err => {
+    if (String(err.message) !== 'session_expired') termAppend('Error: request failed', 'err');
+    input.disabled = false;
+  });
+}
+
+function termKeydown(e) {
+  const input = document.getElementById('term-input');
+
+  if (e.key === 'Enter') {
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    // Push to history (avoid duplicate consecutive)
+    if (termHistory[termHistory.length - 1] !== cmd) termHistory.push(cmd);
+    if (termHistory.length > 200) termHistory.shift();
+    termHistIdx = -1;
+    termPendingSave = '';
+    input.value = '';
+    if (cmd === 'clear') {
+      document.getElementById('term-body').innerHTML = '';
+      return;
+    }
+    termExec(cmd);
+
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (termHistory.length === 0) return;
+    if (termHistIdx === -1) {
+      termPendingSave = input.value;
+      termHistIdx = termHistory.length - 1;
+    } else if (termHistIdx > 0) {
+      termHistIdx--;
+    }
+    input.value = termHistory[termHistIdx];
+    // Move cursor to end
+    setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (termHistIdx === -1) return;
+    termHistIdx++;
+    if (termHistIdx >= termHistory.length) {
+      termHistIdx = -1;
+      input.value = termPendingSave;
+    } else {
+      input.value = termHistory[termHistIdx];
+    }
+    setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+
+  } else if (e.key === 'l' && e.ctrlKey) {
+    e.preventDefault();
+    document.getElementById('term-body').innerHTML = '';
+  }
+}
+
+// ---- Rally Bot Functions ----
+let rallyAllRoutes = [];      // full unfiltered dataset
+let rallyLoaded = false;
+
+function loadRallyBotData() {
+  if (rallyLoaded) { applyRallyFilters(); return; }
+  document.getElementById('rally-routes-container').innerHTML =
+    '<div class="loading-message">Loading routes…</div>';
+
+  fetch('/api/rally-bot/routes')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        document.getElementById('rally-routes-container').innerHTML =
+          `<div class="loading-message">Error: ${data.error}</div>`;
+        return;
+      }
+      rallyAllRoutes = data.routes || [];
+      rallyLoaded = true;
+      buildRallyFilterOptions();
+      applyRallyFilters();
+    })
+    .catch(() => {
+      document.getElementById('rally-routes-container').innerHTML =
+        '<div class="loading-message">Failed to load routes</div>';
+    });
+}
+
+// Build filter options from the FULL unfiltered dataset, called once after load
+function buildRallyFilterOptions() {
+  const origins  = new Set();
+  const dests    = new Set();
+  const models   = new Set();
+
+  rallyAllRoutes.forEach(route => {
+    origins.add(route.origin);
+    (route.returns || []).forEach(ret => {
+      dests.add(ret.destination);
+      if (ret.model_name) models.add(ret.model_name.toLowerCase());
+    });
+  });
+
+  buildMultiSelect('ms-origin-options', [...origins].sort(),  new Set());
+  buildMultiSelect('ms-dest-options',   [...dests].sort(),    new Set());
+  buildMultiSelect('ms-model-options',  [...models].sort(),   new Set());
+}
+
+// Filter client-side from the full cache
+function parseDMY(str) {
+  // "DD/MM/YYYY" -> Date
+  const [d, m, y] = str.split('/');
+  return new Date(+y, +m - 1, +d);
+}
+
+function fmtDMY(date) {
+  if (!date) return '';
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+// ---- Calendar state ----
+let calViewYear  = new Date().getFullYear();
+let calViewMonth = new Date().getMonth();
+let calPickStart = null;   // JS Date, pending (not yet applied)
+let calPickEnd   = null;
+let calApplied   = { start: null, end: null };  // what's actually filtering
+
+function toggleCalendar(event) {
+  event.stopPropagation();
+  const wrapper = document.getElementById('cal-wrapper');
+  const isOpen  = wrapper.classList.contains('open');
+  document.querySelectorAll('.ms-wrapper.open').forEach(w => w.classList.remove('open'));
+  if (!isOpen) {
+    wrapper.classList.add('open');
+    renderCal();
+  }
+}
+
+function calShiftMonth(delta, event) {
+  event.stopPropagation();
+  calViewMonth += delta;
+  if (calViewMonth > 11) { calViewMonth = 0;  calViewYear++; }
+  if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
+  renderCal();
+}
+
+function renderCal() {
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  document.getElementById('cal-month-label').textContent =
+    `${MONTHS[calViewMonth]} ${calViewYear}`;
+
+  const grid = document.getElementById('cal-days');
+  grid.innerHTML = '';
+
+  // First weekday of the month (Mon=0)
+  const firstDay = new Date(calViewYear, calViewMonth, 1).getDay();
+  const offset   = (firstDay === 0) ? 6 : firstDay - 1;
+  const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+
+  // Empty cells before first day
+  for (let i = 0; i < offset; i++) {
+    const blank = document.createElement('span');
+    blank.className = 'cal-day cal-day-blank';
+    grid.appendChild(blank);
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(calViewYear, calViewMonth, day);
+    const btn = document.createElement('button');
+    btn.className = 'cal-day';
+    btn.textContent = day;
+    btn.onclick = (e) => { e.stopPropagation(); calDayClick(d); };
+
+    if (d < today) btn.classList.add('cal-day-past');
+
+    // Highlight logic
+    const s = calPickStart, e2 = calPickEnd;
+    if (s && sameDay(d, s)) btn.classList.add('cal-day-start');
+    if (e2 && sameDay(d, e2)) btn.classList.add('cal-day-end');
+    if (s && e2 && d > s && d < e2) btn.classList.add('cal-day-range');
+    if (s && !e2 && sameDay(d, s)) btn.classList.add('cal-day-start', 'cal-day-end');
+
+    grid.appendChild(btn);
+  }
+
+  // Selection text
+  const txt = document.getElementById('cal-selection-txt');
+  if (calPickStart && calPickEnd) {
+    txt.textContent = `${fmtDMY(calPickStart)} → ${fmtDMY(calPickEnd)}`;
+  } else if (calPickStart) {
+    txt.textContent = `${fmtDMY(calPickStart)} → pick end`;
+  } else {
+    txt.textContent = '';
+  }
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() &&
+         a.getMonth()    === b.getMonth()    &&
+         a.getDate()     === b.getDate();
+}
+
+function calDayClick(date) {
+  if (!calPickStart || (calPickStart && calPickEnd)) {
+    // Start fresh
+    calPickStart = date;
+    calPickEnd   = null;
+  } else {
+    // Second click: assign start/end in order
+    if (date < calPickStart) {
+      calPickEnd   = calPickStart;
+      calPickStart = date;
+    } else {
+      calPickEnd = date;
+    }
+  }
+  renderCal();
+}
+
+function calApply(event) {
+  event.stopPropagation();
+  calApplied.start = calPickStart;
+  calApplied.end   = calPickEnd;
+
+  const label = document.getElementById('cal-label');
+  if (calApplied.start && calApplied.end) {
+    label.textContent = `${fmtDMY(calApplied.start)} → ${fmtDMY(calApplied.end)}`;
+    label.classList.add('has-selection');
+  } else if (calApplied.start) {
+    label.textContent = `From ${fmtDMY(calApplied.start)}`;
+    label.classList.add('has-selection');
+  } else {
+    label.textContent = 'Any date';
+    label.classList.remove('has-selection');
+  }
+
+  document.getElementById('cal-wrapper').classList.remove('open');
+  applyRallyFilters();
+}
+
+function calClear(event) {
+  event.stopPropagation();
+  calPickStart = null;
+  calPickEnd   = null;
+  renderCal();
+}
+
+function calReset() {
+  calPickStart = null; calPickEnd = null;
+  calApplied   = { start: null, end: null };
+  const label = document.getElementById('cal-label');
+  if (label) { label.textContent = 'Any date'; label.classList.remove('has-selection'); }
+}
+
+function applyRallyFilters() {
+  const selOrigins = new Set(getMsSelected('ms-origin-options'));
+  const selDests   = new Set(getMsSelected('ms-dest-options'));
+  const selModels  = new Set(getMsSelected('ms-model-options'));
+  const filterStart = calApplied.start;
+  const filterEnd   = calApplied.end;
+
+  let totalReturns = 0;
+  const filtered = [];
+
+  rallyAllRoutes.forEach(route => {
+    if (selOrigins.size && !selOrigins.has(route.origin)) return;
+
+    const returns = (route.returns || []).reduce((acc, ret) => {
+      if (selDests.size  && !selDests.has(ret.destination))  return acc;
+      if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase()))  return acc;
+
+      // Date filter: keep only date ranges that overlap the selected window
+      let dates = ret.available_dates || [];
+      if (filterStart || filterEnd) {
+        dates = dates.filter(dr => {
+          const routeStart = parseDMY(dr.startDate);
+          const routeEnd   = parseDMY(dr.endDate);
+          const afterFilterStart = filterStart ? routeEnd   >= filterStart : true;
+          const beforeFilterEnd  = filterEnd   ? routeStart <= filterEnd   : true;
+          return afterFilterStart && beforeFilterEnd;
+        });
+        if (!dates.length) return acc;
+      }
+
+      acc.push({ ...ret, available_dates: dates });
+      return acc;
+    }, []);
+
+    if (returns.length) {
+      filtered.push({ ...route, returns });
+      totalReturns += returns.length;
+    }
+  });
+
+  document.getElementById('rally-total-routes').textContent  = filtered.length;
+  document.getElementById('rally-total-returns').textContent = totalReturns;
+  displayRallyRoutes(filtered);
+}
+
+// alias used by date inputs
+function updateRallyRoutes() { applyRallyFilters(); }
+
+function buildMultiSelect(optionsId, items, currentSelected) {
+  const container = document.getElementById(optionsId);
+  if (!container) return;
+  container.innerHTML = '';
+  items.forEach(item => {
+    const label = document.createElement('label');
+    label.className = 'ms-option' + (currentSelected.has(item) ? ' checked' : '');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = item;
+    cb.checked = currentSelected.has(item);
+    cb.addEventListener('change', () => {
+      label.classList.toggle('checked', cb.checked);
+      updateMsTriggerLabel(container.closest('.ms-wrapper'));
+      applyRallyFilters();
+    });
+
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode('\u00a0' + item));
+    container.appendChild(label);
+  });
+  updateMsTriggerLabel(container.closest('.ms-wrapper'));
+}
+
+function getMsSelected(optionsId) {
+  const container = document.getElementById(optionsId);
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+}
+
+function updateMsTriggerLabel(wrapper) {
+  if (!wrapper) return;
+  const checked = wrapper.querySelectorAll('input[type=checkbox]:checked');
+  const label   = wrapper.querySelector('.ms-label');
+  const placeholder = wrapper.dataset.placeholder || 'All';
+  if (checked.length === 0) {
+    label.textContent = placeholder;
+    label.classList.remove('has-selection');
+  } else if (checked.length === 1) {
+    label.textContent = checked[0].value;
+    label.classList.add('has-selection');
+  } else {
+    label.textContent = `${checked.length} selected`;
+    label.classList.add('has-selection');
+  }
+}
+
+function toggleMultiSelect(wrapperId, event) {
+  event.stopPropagation();
+  const wrapper = document.getElementById(wrapperId);
+  const isOpen  = wrapper.classList.contains('open');
+  document.querySelectorAll('.ms-wrapper.open').forEach(w => w.classList.remove('open'));
+  if (!isOpen) {
+    wrapper.classList.add('open');
+    const search = wrapper.querySelector('.ms-search');
+    if (search) { search.value = ''; filterMsPanel(search); search.focus(); }
+  }
+}
+
+function filterMsPanel(input) {
+  const term = input.value.toLowerCase();
+  input.closest('.ms-panel').querySelectorAll('.ms-option').forEach(opt => {
+    opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
+  });
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.ms-wrapper.open').forEach(w => w.classList.remove('open'));
+});
+
+function clearRallyFilters() {
+  ['ms-origin-options','ms-dest-options','ms-model-options'].forEach(id => {
+    const cont = document.getElementById(id);
+    if (!cont) return;
+    cont.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    cont.querySelectorAll('.ms-option').forEach(o => o.classList.remove('checked'));
+    updateMsTriggerLabel(cont.closest('.ms-wrapper'));
+  });
+  calReset();
+  applyRallyFilters();
+}
+
+function displayRallyRoutes(routes) {
+  const container = document.getElementById('rally-routes-container');
+
+  if (routes.length === 0) {
+    container.innerHTML = '<div class="loading-message">No routes found matching your filters</div>';
+    return;
+  }
+
+  // Group by origin + destination so date ranges are merged under one card
+  const grouped = new Map();
+  routes.forEach(route => {
+    route.returns.forEach(ret => {
+      const key = `${route.origin}||${ret.destination}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { origin: route.origin, destination: ret.destination, rows: [] });
+      }
+      const model = (ret.model_name || '').toLowerCase();
+      ret.available_dates.forEach(dateRange => {
+        grouped.get(key).rows.push({ model, dateRange, url: ret.roadsurfer_url });
+      });
+    });
+  });
+
+  let html = '';
+  grouped.forEach(({ origin, destination, rows }) => {
+    const dateRows = rows.map(({ model, dateRange, url }) => `
+      <div class="rc-date-row">
+        ${model ? `<span class="rc-model">${model}</span>` : ''}
+        <span class="rc-dates">${dateRange.startDate}<span class="rc-datesep">→</span>${dateRange.endDate}</span>
+        <a href="${url}" target="_blank" class="rc-book">Book →</a>
+      </div>`).join('');
+
+    html += `
+    <div class="route-card">
+      <div class="rc-header">
+        <span class="rc-origin">${origin}</span>
+        <span class="rc-arrow">→</span>
+        <span class="rc-dest">${destination}</span>
+      </div>
+      <div class="rc-dates-list">${dateRows}</div>
+    </div>`;
+  });
+
+  container.innerHTML = `<div class="route-list">${html}</div>`;
+}
+
+
+

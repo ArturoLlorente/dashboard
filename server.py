@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import subprocess
 import os
 import requests
@@ -9,6 +9,8 @@ from pathlib import Path
 import json
 import threading
 import time
+import glob
+import secrets
 
 app = Flask(__name__)
 
@@ -48,6 +50,10 @@ load_env()
 IPTV_USERNAME = os.environ.get('IPTV_USERNAME', 'your_username')
 IPTV_PASSWORD = os.environ.get('IPTV_PASSWORD', 'your_password')
 IPTV_HOST = os.environ.get('IPTV_HOST', 'your_host.com')
+TERMINAL_PASSWORD = os.environ.get('TERMINAL_PASSWORD', 'changeme')
+
+# In-memory terminal sessions: token -> {cwd, created_at}
+terminal_sessions = {}
 
 def run_command(command):
     """Execute shell command and return output"""
@@ -239,11 +245,26 @@ def get_running_services():
     
     return status
 
+def get_tmux_socket():
+    """Find the best tmux socket to use (prefer non-root user sockets)"""
+    sockets = sorted(glob.glob('/tmp/tmux-*/default'))
+    # Prefer sockets not owned by root (uid != 0)
+    for s in sockets:
+        if '/tmux-0/' not in s:
+            return s
+    return sockets[0] if sockets else None
+
+
 def get_tmux_sessions():
     """Get tmux sessions and their status"""
     try:
+        socket_path = get_tmux_socket()
+        if not socket_path:
+            return {'sessions': [], 'total': 0}
+        sock_flag = f'-S {socket_path}'
+
         # Get list of tmux sessions
-        sessions_output = run_command('tmux list-sessions -F "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}" 2>/dev/null')
+        sessions_output = run_command(f'tmux {sock_flag} list-sessions -F "#{{session_name}}|#{{session_created}}|#{{session_attached}}|#{{session_windows}}" 2>/dev/null')
         
         if not sessions_output or 'Error' in sessions_output or sessions_output == '':
             return {'sessions': [], 'total': 0}
@@ -260,7 +281,7 @@ def get_tmux_sessions():
                 windows = parts[3]
                 
                 # Get windows info for this session
-                windows_output = run_command(f'tmux list-windows -t "{session_name}" -F "#{{window_index}}:#{{window_name}}|#{{window_active}}" 2>/dev/null')
+                windows_output = run_command(f'tmux {sock_flag} list-windows -t "{session_name}" -F "#{{window_index}}:#{{window_name}}|#{{window_active}}" 2>/dev/null')
                 window_list = []
                 if windows_output and 'Error' not in windows_output:
                     for win_line in windows_output.strip().split('\n'):
@@ -272,7 +293,7 @@ def get_tmux_sessions():
                             })
                 
                 # Get panes count
-                panes_count = run_command(f'tmux list-panes -t "{session_name}" 2>/dev/null | wc -l')
+                panes_count = run_command(f'tmux {sock_flag} list-panes -t "{session_name}" 2>/dev/null | wc -l')
                 
                 # Calculate uptime
                 try:
@@ -303,6 +324,69 @@ def get_tmux_sessions():
     except Exception as e:
         print(f"Error getting tmux sessions: {e}")
         return {'sessions': [], 'total': 0, 'error': str(e)}
+
+def estimate_battery_life():
+    """Estimate remaining battery life (or time to full charge) from recent history."""
+    if len(battery_history) < 2:
+        return None
+
+    # Use up to the last 6 entries (~60 minutes of data)
+    window = battery_history[-6:]
+    current = window[-1]
+    current_status = current['status'].lower()
+
+    # Only use entries that share the current charge/discharge status
+    consistent = [e for e in window if e['status'].lower() == current_status]
+    if len(consistent) < 2:
+        return None
+
+    first = consistent[0]
+    last = consistent[-1]
+
+    try:
+        t1 = datetime.fromisoformat(first['timestamp'])
+        t2 = datetime.fromisoformat(last['timestamp'])
+        time_diff_minutes = (t2 - t1).total_seconds() / 60
+        if time_diff_minutes < 1:
+            return None
+
+        # capacity_diff > 0  => discharging (capacity dropped)
+        # capacity_diff < 0  => charging  (capacity rose)
+        capacity_diff = first['capacity'] - last['capacity']
+        rate_per_minute = capacity_diff / time_diff_minutes  # % per minute
+
+        current_capacity = current['capacity']
+
+        if current_status == 'discharging' and rate_per_minute > 0:
+            minutes_remaining = current_capacity / rate_per_minute
+            hours = int(minutes_remaining // 60)
+            mins = int(minutes_remaining % 60)
+            return {
+                'status': 'discharging',
+                'rate_per_hour': round(rate_per_minute * 60, 1),
+                'estimate': f"{hours}h {mins}m" if hours > 0 else f"{mins}m",
+                'minutes': round(minutes_remaining)
+            }
+        elif current_status == 'charging' and rate_per_minute < 0:
+            charge_rate = -rate_per_minute  # positive %/min
+            if charge_rate > 0:
+                minutes_to_full = (100 - current_capacity) / charge_rate
+                hours = int(minutes_to_full // 60)
+                mins = int(minutes_to_full % 60)
+                return {
+                    'status': 'charging',
+                    'rate_per_hour': round(charge_rate * 60, 1),
+                    'estimate': f"{hours}h {mins}m" if hours > 0 else f"{mins}m",
+                    'minutes': round(minutes_to_full)
+                }
+        elif rate_per_minute == 0:
+            return {'status': current_status, 'rate_per_hour': 0, 'estimate': 'Stable', 'minutes': None}
+
+    except Exception:
+        pass
+
+    return None
+
 
 def add_metrics_history(system_info, network_info):
     """Add current metrics to history"""
@@ -353,9 +437,11 @@ def status():
     system = get_system_info()
     network = get_network_info()
     services = get_running_services()
-    
+    battery_estimate = estimate_battery_life()
+
     return jsonify({
         'battery': battery,
+        'battery_estimate': battery_estimate,
         'brightness': brightness,
         'system': system,
         'network': network,
@@ -398,6 +484,190 @@ def reboot():
     run_command('sudo reboot')
     return jsonify({'success': True, 'message': 'Rebooting...'})
 
+# ---- Terminal endpoints ----
+
+@app.route('/api/terminal/login', methods=['POST'])
+def terminal_login():
+    """Authenticate and get a session token"""
+    data = request.get_json() or {}
+    if data.get('password') == TERMINAL_PASSWORD:
+        token = secrets.token_hex(16)
+        terminal_sessions[token] = {
+            'cwd': str(Path.home()),
+            'created_at': time.time()
+        }
+        return jsonify({'success': True, 'token': token, 'cwd': str(Path.home())})
+    return jsonify({'success': False, 'error': 'Invalid password'}), 401
+
+
+def _get_terminal_session(data):
+    """Validate token and return session dict, or None if invalid/expired."""
+    token = (data or {}).get('token', '')
+    session = terminal_sessions.get(token)
+    if not session:
+        return None, 'Unauthorized'
+    if time.time() - session['created_at'] > 3600:
+        terminal_sessions.pop(token, None)
+        return None, 'Session expired'
+    return session, None
+
+
+@app.route('/api/terminal/exec', methods=['POST'])
+def terminal_exec():
+    """Execute a shell command within the authenticated session"""
+    data = request.get_json() or {}
+    session, err = _get_terminal_session(data)
+    if err:
+        return jsonify({'success': False, 'error': err}), 401
+
+    cmd = data.get('command', '').strip()
+    if not cmd:
+        return jsonify({'output': '', 'cwd': session['cwd']})
+
+    # Handle `cd` specially to persist the working directory
+    if cmd.startswith('cd') and (len(cmd) == 2 or cmd[2] in (' ', '\t')):
+        parts = cmd.split(None, 1)
+        target = os.path.expanduser(parts[1]) if len(parts) > 1 else str(Path.home())
+        if not os.path.isabs(target):
+            target = os.path.join(session['cwd'], target)
+        target = os.path.normpath(target)
+        if os.path.isdir(target):
+            session['cwd'] = target
+            return jsonify({'output': '', 'cwd': session['cwd']})
+        else:
+            return jsonify({'output': f'cd: {target}: No such file or directory', 'cwd': session['cwd']})
+
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=30, cwd=session['cwd']
+        )
+        output = result.stdout
+        if result.stderr:
+            output += result.stderr
+        return jsonify({'output': output.rstrip('\n'), 'cwd': session['cwd']})
+    except subprocess.TimeoutExpired:
+        return jsonify({'output': 'Error: command timed out (30 s limit)', 'cwd': session['cwd']})
+    except Exception as e:
+        return jsonify({'output': f'Error: {e}', 'cwd': session['cwd']})
+
+
+@app.route('/api/terminal/logout', methods=['POST'])
+def terminal_logout():
+    """Invalidate a terminal session token"""
+    data = request.get_json() or {}
+    terminal_sessions.pop(data.get('token', ''), None)
+    return jsonify({'success': True})
+
+@app.route('/api/rally-bot/routes')
+def rally_bot_routes():
+    """Get rally bot station routes with optional filtering"""
+    try:
+        rally_file = Path(__file__).parent.parent / 'rally_bot' / 'station_routes.json'
+        if not rally_file.exists():
+            return jsonify({'success': False, 'error': 'Rally bot data not found'})
+        
+        with open(rally_file, 'r') as f:
+            all_routes = json.load(f)
+        
+        # Get filter parameters (comma-separated multi-values supported)
+        def parse_multi(param):
+            raw = request.args.get(param, '').strip()
+            return [v.strip().lower() for v in raw.split(',') if v.strip()] if raw else []
+
+        origin_filters = parse_multi('origin')
+        destination_filters = parse_multi('destination')
+        model_filters = parse_multi('model')
+        start_date = request.args.get('start_date', '').strip()
+        end_date = request.args.get('end_date', '').strip()
+        
+        filtered_routes = []
+        
+        for route in all_routes:
+            # Filter by origin (any selected)
+            if origin_filters and not any(f in route['origin'].lower() for f in origin_filters):
+                continue
+            
+            # Filter returns by destination, model and date
+            filtered_returns = []
+            for ret in route.get('returns', []):
+                # Filter by destination (any selected)
+                if destination_filters and not any(f in ret['destination'].lower() for f in destination_filters):
+                    continue
+                
+                # Filter by model name (any selected)
+                if model_filters and not any(f in ret.get('model_name', '').lower() for f in model_filters):
+                    continue
+                
+                # Filter by date
+                if start_date or end_date:
+                    has_matching_date = False
+                    for date_range in ret.get('available_dates', []):
+                        # Check if route dates match filter
+                        if start_date and end_date:
+                            # Check if there's overlap with filter range
+                            has_matching_date = True  # Simplified - could add proper date comparison
+                        elif start_date:
+                            has_matching_date = True
+                        elif end_date:
+                            has_matching_date = True
+                    if not has_matching_date:
+                        continue
+                
+                filtered_returns.append(ret)
+            
+            if filtered_returns:
+                route_copy = route.copy()
+                route_copy['returns'] = filtered_returns
+                filtered_routes.append(route_copy)
+        
+        # Get unique origins, destinations and models for filter options
+        origins = sorted(list(set([r['origin'] for r in all_routes])))
+        destinations = sorted(list(set([
+            ret['destination'] 
+            for r in all_routes 
+            for ret in r.get('returns', [])
+        ])))
+        models = sorted(list(set([
+            ret['model_name']
+            for r in all_routes
+            for ret in r.get('returns', [])
+            if ret.get('model_name')
+        ])))
+        
+        return jsonify({
+            'success': True,
+            'routes': filtered_routes,
+            'total_routes': len(filtered_routes),
+            'total_returns': sum([len(r['returns']) for r in filtered_routes]),
+            'filter_options': {
+                'origins': origins,
+                'destinations': destinations,
+                'models': models
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/quick-stats')
+def quick_stats():
+    """Get quick stats for dashboard header (lightweight)"""
+    try:
+        battery = get_battery_info()
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+        mem_percent = psutil.virtual_memory().percent
+        temp = get_temperature()
+        
+        return jsonify({
+            'battery': battery,
+            'cpu': cpu_usage,
+            'memory': mem_percent,
+            'temperature': temp,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 def background_metrics_collector():
     """Background thread to continuously collect metrics"""
     global last_battery_record_time
@@ -430,8 +700,8 @@ def main():
     collector_thread = threading.Thread(target=background_metrics_collector, daemon=True)
     collector_thread.start()
     
-    print(f"Starting server on port 5020...")
-    app.run(host='0.0.0.0', port=5020, debug=False)
+    print(f"Starting server on port 6969...")
+    app.run(host='0.0.0.0', port=6969, debug=False)
 
 if __name__ == '__main__':
     main()

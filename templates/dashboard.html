@@ -13,6 +13,7 @@
     <div class="header">
       <div class="title">
         <h1>Server Dashboard</h1>
+        <div class="subtitle">Real-time system monitoring & control</div>
       </div>
 
       <div class="top-right">
@@ -23,6 +24,7 @@
               <span class="arrow" id="battery-hero-arrow">•</span>
             </div>
             <div class="battery-sub" id="battery-hero-status">--</div>
+            <div class="battery-sub" id="battery-hero-estimate" style="font-size:11px;opacity:.7;"></div>
           </div>
           <div class="battery-bar"><div id="battery-hero-bar"></div></div>
         </div>
@@ -35,21 +37,61 @@
       </div>
     </div>
 
+    <!-- Quick Stats Bar (always visible) -->
+    <div class="quick-stats">
+      <div class="quick-stat">
+        <div class="quick-stat-icon">🖥️</div>
+        <div class="quick-stat-content">
+          <div class="quick-stat-label">CPU</div>
+          <div class="quick-stat-value" id="quick-cpu">--%</div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-icon">💾</div>
+        <div class="quick-stat-content">
+          <div class="quick-stat-label">Memory</div>
+          <div class="quick-stat-value" id="quick-mem">--%</div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-icon">🌡️</div>
+        <div class="quick-stat-content">
+          <div class="quick-stat-label">Temp</div>
+          <div class="quick-stat-value" id="quick-temp">--°C</div>
+        </div>
+      </div>
+      <div class="quick-stat">
+        <div class="quick-stat-icon">💿</div>
+        <div class="quick-stat-content">
+          <div class="quick-stat-label">Disk</div>
+          <div class="quick-stat-value" id="quick-disk">--%</div>
+        </div>
+      </div>
+    </div>
+
     <div class="main-layout">
       <!-- Sidebar Navigation -->
       <div class="sidebar">
         <div class="sidebar-title">Navigation</div>
-        <div class="nav-item active" onclick="switchWindow('metrics')">
+        <div class="nav-item active" data-window="metrics" onclick="switchWindow('metrics')">
           <span class="nav-icon">📊</span>
           <span>System Metrics</span>
         </div>
-        <div class="nav-item" onclick="switchWindow('controls')">
+        <div class="nav-item" data-window="controls" onclick="switchWindow('controls')">
           <span class="nav-icon">⚙️</span>
           <span>Controls & Services</span>
         </div>
-        <div class="nav-item" onclick="switchWindow('tmux')">
+        <div class="nav-item" data-window="rally" onclick="switchWindow('rally')">
+          <span class="nav-icon">🚐</span>
+          <span>Rally Bot</span>
+        </div>
+        <div class="nav-item" data-window="tmux" onclick="switchWindow('tmux')">
           <span class="nav-icon">🖥️</span>
           <span>Tmux Sessions</span>
+        </div>
+        <div class="nav-item" data-window="terminal" onclick="switchWindow('terminal')">
+          <span class="nav-icon">💻</span>
+          <span>Terminal</span>
         </div>
       </div>
 
@@ -87,6 +129,7 @@
               <div class="card">
                 <h2><span>Battery History</span><span class="pill ok" id="battery-pill">HISTORY</span></h2>
                 <div class="kpi"><div class="value" id="battery-hist-kpi">--</div><div class="unit">%</div></div>
+                <div style="font-size:12px;color:var(--muted);margin:-6px 0 8px 0;" id="battery-estimate-card"></div>
                 <div class="chart-wrap"><canvas id="batteryChart"></canvas></div>
               </div>
 
@@ -176,6 +219,138 @@
                 <div id="tmux-sessions-list">
                   <div class="stat"><span class="stat-label">Loading...</span><span class="stat-value">--</span></div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Rally Bot Window -->
+        <div class="window" id="window-rally">
+          <div class="section">
+            <div class="section-title">Rally Bot - Station Routes</div>
+            
+            <!-- Filters -->
+            <div class="rally-filters">
+              <div class="filter-group">
+                <label class="filter-label">Origin Station</label>
+                <div class="ms-wrapper" id="ms-origin" data-placeholder="All Origins">
+                  <button class="ms-trigger" onclick="toggleMultiSelect('ms-origin', event)">
+                    <span class="ms-label">All Origins</span>
+                    <span class="ms-chevron">▾</span>
+                  </button>
+                  <div class="ms-panel" id="ms-origin-panel">
+                    <input class="ms-search" type="text" placeholder="Search…" oninput="filterMsPanel(this)" />
+                    <div class="ms-options" id="ms-origin-options"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group">
+                <label class="filter-label">Destination</label>
+                <div class="ms-wrapper" id="ms-dest" data-placeholder="All Destinations">
+                  <button class="ms-trigger" onclick="toggleMultiSelect('ms-dest', event)">
+                    <span class="ms-label">All Destinations</span>
+                    <span class="ms-chevron">▾</span>
+                  </button>
+                  <div class="ms-panel" id="ms-dest-panel">
+                    <input class="ms-search" type="text" placeholder="Search…" oninput="filterMsPanel(this)" />
+                    <div class="ms-options" id="ms-dest-options"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group">
+                <label class="filter-label">Camper Model</label>
+                <div class="ms-wrapper" id="ms-model" data-placeholder="All Models">
+                  <button class="ms-trigger" onclick="toggleMultiSelect('ms-model', event)">
+                    <span class="ms-label">All Models</span>
+                    <span class="ms-chevron">▾</span>
+                  </button>
+                  <div class="ms-panel" id="ms-model-panel">
+                    <input class="ms-search" type="text" placeholder="Search…" oninput="filterMsPanel(this)" />
+                    <div class="ms-options" id="ms-model-options"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group" style="flex:2;min-width:220px">
+                <label class="filter-label">Date Range</label>
+                <div class="ms-wrapper" id="cal-wrapper">
+                  <button class="ms-trigger" onclick="toggleCalendar(event)">
+                    <span class="ms-label" id="cal-label">Any date</span>
+                    <span class="ms-chevron">▾</span>
+                  </button>
+                  <div class="ms-panel cal-panel" id="cal-panel">
+                    <div class="cal-header">
+                      <button class="cal-nav" onclick="calShiftMonth(-1,event)">&#8249;</button>
+                      <span class="cal-month-label" id="cal-month-label"></span>
+                      <button class="cal-nav" onclick="calShiftMonth(1,event)">&#8250;</button>
+                    </div>
+                    <div class="cal-weekdays">
+                      <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+                    </div>
+                    <div class="cal-days" id="cal-days"></div>
+                    <div class="cal-footer">
+                      <span class="cal-selection-txt" id="cal-selection-txt"></span>
+                      <div class="cal-footer-btns">
+                        <button class="btn cal-clear-btn" onclick="calClear(event)">Clear</button>
+                        <button class="btn cal-apply-btn" onclick="calApply(event)">Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group filter-group-btn">
+                <button class="btn" onclick="clearRallyFilters()">Clear All</button>
+              </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="rally-stats">
+              <div class="rally-stat-card">
+                <div class="rally-stat-value" id="rally-total-routes">--</div>
+                <div class="rally-stat-label">Total Routes</div>
+              </div>
+              <div class="rally-stat-card">
+                <div class="rally-stat-value" id="rally-total-returns">--</div>
+                <div class="rally-stat-label">Available Returns</div>
+              </div>
+            </div>
+
+            <!-- Routes List -->
+            <div id="rally-routes-container" class="rally-routes">
+              <div class="loading-message">Loading routes...</div>
+            </div>
+          </div>
+        </div>
+        <!-- Terminal Window -->
+        <div class="window" id="window-terminal">
+          <div class="section">
+            <div class="section-title">Terminal</div>
+
+            <!-- Lock screen -->
+            <div id="term-lock">
+              <div class="term-lock-box">
+                <div class="term-lock-icon">🔒</div>
+                <div class="term-lock-title">Authentication required</div>
+                <div class="term-lock-sub">Enter the terminal password to continue</div>
+                <form id="term-login-form" onsubmit="termLogin(event)" autocomplete="off">
+                  <input class="term-password-input" type="password" id="term-password" placeholder="Password" autofocus />
+                  <button class="btn term-login-btn" type="submit">Unlock</button>
+                </form>
+                <div id="term-login-error" class="term-login-error"></div>
+              </div>
+            </div>
+
+            <!-- Terminal UI (shown after auth) -->
+            <div id="term-ui" style="display:none;">
+              <div class="term-topbar">
+                <span id="term-cwd" class="term-cwd">~</span>
+                <button class="btn term-logout-btn" onclick="termLogout()">🔒 Lock</button>
+              </div>
+              <div class="term-body" id="term-body"></div>
+              <div class="term-input-row">
+                <span class="term-prompt" id="term-prompt">$</span>
+                <input class="term-input" id="term-input" type="text"
+                  placeholder="Enter command…"
+                  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                  onkeydown="termKeydown(event)" />
               </div>
             </div>
           </div>
