@@ -11,11 +11,16 @@ import threading
 import time
 import glob
 import secrets
+import argparse
 
 app = Flask(__name__)
 
 # Battery history configuration
 BATTERY_HISTORY_FILE = Path(__file__).parent / 'battery_history.json'
+
+# Todo storage
+TODO_FILE = Path(__file__).parent / 'todos.json'
+todos_data = []
 MAX_HISTORY_ENTRIES = 144  # Keep last 24 hours (144 entries at 10-minute intervals)
 BATTERY_UPDATE_INTERVAL = 600  # Record battery every 10 minutes (600 seconds)
 battery_history = []  # Will be loaded from file on startup
@@ -62,6 +67,30 @@ def run_command(command):
         return result.stdout.strip()
     except Exception as e:
         return f"Error: {str(e)}"
+
+def load_todos():
+    """Load todos from file"""
+    global todos_data
+    try:
+        if TODO_FILE.exists():
+            with open(TODO_FILE, 'r') as f:
+                todos_data = json.load(f)
+                print(f"Loaded {len(todos_data)} todos")
+        else:
+            todos_data = []
+    except Exception as e:
+        print(f"Error loading todos: {e}")
+        todos_data = []
+
+
+def save_todos():
+    """Save todos to file"""
+    try:
+        with open(TODO_FILE, 'w') as f:
+            json.dump(todos_data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving todos: {e}")
+
 
 def load_battery_history():
     """Load battery history from file"""
@@ -559,6 +588,98 @@ def terminal_logout():
     terminal_sessions.pop(data.get('token', ''), None)
     return jsonify({'success': True})
 
+# ---- Todo endpoints ----
+
+@app.route('/api/todos', methods=['GET'])
+def get_todos():
+    """Return all todos"""
+    return jsonify(todos_data)
+
+
+@app.route('/api/todos/reorder', methods=['POST'])
+def reorder_todos():
+    """Persist new ordering for open todos"""
+    data = request.get_json() or {}
+    order = data.get('order', [])  # list of ids in new order
+    id_to_order = {tid: i for i, tid in enumerate(order)}
+    for todo in todos_data:
+        if todo['id'] in id_to_order:
+            todo['order'] = id_to_order[todo['id']]
+    threading.Thread(target=save_todos, daemon=True).start()
+    return jsonify({'success': True})
+
+
+@app.route('/api/todos', methods=['POST'])
+def create_todo():
+    """Create a new todo item"""
+    data = request.get_json() or {}
+    new_id = secrets.token_hex(8)
+    open_count = len([t for t in todos_data if not t.get('completed', False)])
+    todo = {
+        'id': new_id,
+        'title': (data.get('title') or 'Untitled').strip(),
+        'description': data.get('description', ''),
+        'notes': data.get('notes', ''),
+        'due_date': data.get('due_date', ''),
+        'completed': False,
+        'created_at': datetime.now().isoformat(),
+        'completed_at': None,
+        'order': open_count,
+    }
+    todos_data.append(todo)
+    threading.Thread(target=save_todos, daemon=True).start()
+    return jsonify(todo), 201
+
+
+@app.route('/api/todos/<todo_id>', methods=['PUT'])
+def update_todo(todo_id):
+    """Update an existing todo item"""
+    data = request.get_json() or {}
+    for todo in todos_data:
+        if todo['id'] == todo_id:
+            for field in ['title', 'description', 'notes', 'due_date']:
+                if field in data:
+                    todo[field] = data[field]
+            threading.Thread(target=save_todos, daemon=True).start()
+            return jsonify(todo)
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/todos/<todo_id>/complete', methods=['POST'])
+def complete_todo(todo_id):
+    """Mark a todo as completed (archived)"""
+    for todo in todos_data:
+        if todo['id'] == todo_id:
+            todo['completed'] = True
+            todo['completed_at'] = datetime.now().isoformat()
+            threading.Thread(target=save_todos, daemon=True).start()
+            return jsonify(todo)
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/todos/<todo_id>/reopen', methods=['POST'])
+def reopen_todo(todo_id):
+    """Re-open an archived todo"""
+    open_count = len([t for t in todos_data if not t.get('completed', False)])
+    for todo in todos_data:
+        if todo['id'] == todo_id:
+            todo['completed'] = False
+            todo['completed_at'] = None
+            todo['order'] = open_count
+            threading.Thread(target=save_todos, daemon=True).start()
+            return jsonify(todo)
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/todos/<todo_id>', methods=['DELETE'])
+def delete_todo(todo_id):
+    """Delete a todo item permanently"""
+    global todos_data
+    todos_data = [t for t in todos_data if t['id'] != todo_id]
+    threading.Thread(target=save_todos, daemon=True).start()
+    return jsonify({'success': True})
+
+
 @app.route('/api/rally-bot/routes')
 def rally_bot_routes():
     """Get rally bot station routes with optional filtering"""
@@ -693,15 +814,20 @@ def background_metrics_collector():
 
 def main():
     """Main entry point for the application"""
-    # Load battery history on startup
+    # Load persisted data on startup
     load_battery_history()
+    load_todos()
     
     # Start background metrics collection thread
     collector_thread = threading.Thread(target=background_metrics_collector, daemon=True)
     collector_thread.start()
-    
-    print(f"Starting server on port 6969...")
-    app.run(host='0.0.0.0', port=6969, debug=False)
+
+    parser = argparse.ArgumentParser(description='Server Dashboard')
+    parser.add_argument('--port', type=int, default=6969, help='Port to listen on (default: 6969)')
+    args = parser.parse_args()
+
+    print(f"Starting server on port {args.port}...")
+    app.run(host='0.0.0.0', port=args.port, debug=False)
 
 if __name__ == '__main__':
     main()

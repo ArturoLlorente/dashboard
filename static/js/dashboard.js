@@ -60,6 +60,8 @@ function switchWindow(windowName) {
     updateDashboard();
   } else if (windowName === 'controls') {
     updateDashboard();
+  } else if (windowName === 'todo') {
+    loadTodos();
   }
 
   // Terminal lock/unlock
@@ -1156,7 +1158,14 @@ function displayRallyRoutes(routes) {
   });
 
   let html = '';
-  grouped.forEach(({ origin, destination, rows }) => {
+  // Sort groups by their earliest date, then sort rows within each group
+  [...grouped.values()]
+    .map(g => {
+      g.rows.sort((a, b) => parseDMY(a.dateRange.startDate) - parseDMY(b.dateRange.startDate));
+      return g;
+    })
+    .sort((a, b) => parseDMY(a.rows[0].dateRange.startDate) - parseDMY(b.rows[0].dateRange.startDate))
+    .forEach(({ origin, destination, rows }) => {
     const dateRows = rows.map(({ model, dateRange, url }) => `
       <div class="rc-date-row">
         ${model ? `<span class="rc-model">${model}</span>` : ''}
@@ -1179,4 +1188,291 @@ function displayRallyRoutes(routes) {
 }
 
 
+/* ================================================================
+   TODO LIST
+   ================================================================ */
 
+let todoItems = [];
+let todoArchiveVisible = false;
+let todoDragSrcId = null;
+let todoDragOverId = null;
+
+// ---- Data loading ----
+
+async function loadTodos() {
+  try {
+    const res = await fetch('/api/todos');
+    todoItems = await res.json();
+    renderTodos();
+  } catch (e) {
+    console.error('Error loading todos:', e);
+  }
+}
+
+// ---- Rendering ----
+
+function renderTodos() {
+  const openList    = document.getElementById('todo-open-list');
+  const archiveList = document.getElementById('todo-archive-list');
+  const archiveCnt  = document.getElementById('todo-archive-count');
+  if (!openList) return;
+
+  const openItems     = todoItems.filter(t => !t.completed).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const archivedItems = todoItems.filter(t =>  t.completed).sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+
+  archiveCnt.textContent = archivedItems.length;
+
+  // ---- open items ----
+  if (openItems.length === 0) {
+    openList.innerHTML = '<div class="todo-empty">No open items. Click "+ Add Item" to create one.</div>';
+  } else {
+    openList.innerHTML = openItems.map(item => {
+      const dueClass = item.due_date ? todoDueClass(item.due_date) : '';
+      const dueTxt   = item.due_date ? todoFormatDue(item.due_date) : '';
+      const descTxt  = item.description
+        ? `<div class="todo-item-desc">${escHtml(item.description.substring(0, 90))}${item.description.length > 90 ? '…' : ''}</div>`
+        : '';
+      const dueBadge = dueTxt
+        ? `<div class="todo-item-due ${dueClass}">${dueTxt}</div>`
+        : '';
+      return `
+        <div class="todo-item" draggable="true" data-id="${item.id}"
+             ondragstart="todoDragStart(event)"
+             ondragover="todoDragOver(event)"
+             ondrop="todoDrop(event)"
+             ondragend="todoDragEnd(event)">
+          <div class="todo-drag-handle" title="Drag to reorder">⠿</div>
+          <button class="todo-done-btn" onclick="completeTodo('${item.id}')" title="Mark as done">○</button>
+          <div class="todo-item-main" onclick="openTodoModal('${item.id}')">
+            <div class="todo-item-title">${escHtml(item.title)}</div>
+            ${dueBadge}${descTxt}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ---- archived items ----
+  if (archivedItems.length === 0) {
+    archiveList.innerHTML = '<div class="todo-empty">No archived items.</div>';
+  } else {
+    archiveList.innerHTML = archivedItems.map(item => `
+      <div class="todo-archive-item" data-id="${item.id}">
+        <div class="todo-archive-check">✓</div>
+        <div class="todo-item-main" onclick="openTodoModal('${item.id}')">
+          <div class="todo-item-title todo-item-title-done">${escHtml(item.title)}</div>
+          ${item.completed_at ? `<div class="todo-item-due">${todoFormatDate(item.completed_at)}</div>` : ''}
+        </div>
+        <button class="todo-reopen-btn" onclick="reopenTodo('${item.id}')" title="Reopen">↩</button>
+        <button class="todo-del-btn"    onclick="deleteTodo('${item.id}')"  title="Delete permanently">✕</button>
+      </div>`).join('');
+  }
+}
+
+function toggleTodoArchive() {
+  todoArchiveVisible = !todoArchiveVisible;
+  document.getElementById('todo-archive-list').style.display = todoArchiveVisible ? 'flex' : 'none';
+  document.getElementById('todo-archive-chevron').textContent = todoArchiveVisible ? '▴' : '▾';
+}
+
+// ---- Due-date helpers ----
+
+function todoDueClass(dueDate) {
+  const diff = (new Date(dueDate) - new Date()) / 86400000;
+  if (diff < 0) return 'due-overdue';
+  if (diff < 2) return 'due-soon';
+  return '';
+}
+
+function todoFormatDue(dueDate) {
+  const due  = new Date(dueDate);
+  const diff = Math.floor((due - new Date()) / 86400000);
+  if (diff < 0)  return `Overdue (${due.toLocaleDateString()})`;
+  if (diff === 0) return 'Due today';
+  if (diff === 1) return 'Due tomorrow';
+  return `Due ${due.toLocaleDateString()}`;
+}
+
+function todoFormatDate(isoStr) {
+  return isoStr ? new Date(isoStr).toLocaleDateString() : '';
+}
+
+function escHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ---- Modal ----
+
+function openTodoModal(id) {
+  const overlay   = document.getElementById('todo-modal-overlay');
+  const heading   = document.getElementById('todo-modal-heading');
+  const deleteBtn = document.getElementById('todo-modal-delete-btn');
+
+  document.getElementById('todo-modal-id').value  = id || '';
+  document.getElementById('todo-modal-title-input').style.borderColor = '';
+
+  if (id) {
+    const item = todoItems.find(t => t.id === id);
+    if (!item) return;
+    heading.textContent = 'Edit Item';
+    document.getElementById('todo-modal-title-input').value = item.title        || '';
+    document.getElementById('todo-modal-due-input').value   = item.due_date     || '';
+    document.getElementById('todo-modal-desc-input').value  = item.description  || '';
+    document.getElementById('todo-modal-notes-input').value = item.notes        || '';
+    deleteBtn.style.display = 'inline-flex';
+  } else {
+    heading.textContent = 'New Item';
+    document.getElementById('todo-modal-title-input').value = '';
+    document.getElementById('todo-modal-due-input').value   = '';
+    document.getElementById('todo-modal-desc-input').value  = '';
+    document.getElementById('todo-modal-notes-input').value = '';
+    deleteBtn.style.display = 'none';
+  }
+
+  overlay.classList.add('open');
+  setTimeout(() => document.getElementById('todo-modal-title-input').focus(), 60);
+}
+
+function closeTodoModal() {
+  document.getElementById('todo-modal-overlay').classList.remove('open');
+}
+
+function closeTodoModalOverlay(event) {
+  if (event.target === document.getElementById('todo-modal-overlay')) closeTodoModal();
+}
+
+async function saveTodoModal() {
+  const id    = document.getElementById('todo-modal-id').value;
+  const title = document.getElementById('todo-modal-title-input').value.trim();
+
+  if (!title) {
+    const inp = document.getElementById('todo-modal-title-input');
+    inp.style.borderColor = 'var(--bad)';
+    inp.focus();
+    return;
+  }
+
+  const payload = {
+    title,
+    due_date:    document.getElementById('todo-modal-due-input').value,
+    description: document.getElementById('todo-modal-desc-input').value,
+    notes:       document.getElementById('todo-modal-notes-input').value,
+  };
+
+  try {
+    let res;
+    if (id) {
+      res = await fetch(`/api/todos/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+    } else {
+      res = await fetch('/api/todos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+    }
+    const saved = await res.json();
+    if (id) {
+      const idx = todoItems.findIndex(t => t.id === id);
+      if (idx >= 0) todoItems[idx] = saved;
+    } else {
+      todoItems.push(saved);
+    }
+    renderTodos();
+    closeTodoModal();
+  } catch (e) {
+    console.error('Error saving todo:', e);
+  }
+}
+
+async function deleteTodoFromModal() {
+  const id = document.getElementById('todo-modal-id').value;
+  if (!id) return;
+  if (!confirm('Permanently delete this item?')) return;
+  await deleteTodo(id);
+  closeTodoModal();
+}
+
+// ---- Item actions ----
+
+async function completeTodo(id) {
+  try {
+    const res     = await fetch(`/api/todos/${id}/complete`, { method: 'POST' });
+    const updated = await res.json();
+    const idx     = todoItems.findIndex(t => t.id === id);
+    if (idx >= 0) todoItems[idx] = updated;
+    renderTodos();
+  } catch (e) { console.error('Error completing todo:', e); }
+}
+
+async function reopenTodo(id) {
+  try {
+    const res     = await fetch(`/api/todos/${id}/reopen`, { method: 'POST' });
+    const updated = await res.json();
+    const idx     = todoItems.findIndex(t => t.id === id);
+    if (idx >= 0) todoItems[idx] = updated;
+    renderTodos();
+  } catch (e) { console.error('Error reopening todo:', e); }
+}
+
+async function deleteTodo(id) {
+  try {
+    await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+    todoItems = todoItems.filter(t => t.id !== id);
+    renderTodos();
+  } catch (e) { console.error('Error deleting todo:', e); }
+}
+
+// ---- Drag and drop ----
+
+function todoDragStart(event) {
+  todoDragSrcId = event.currentTarget.dataset.id;
+  event.currentTarget.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function todoDragOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  const el = event.currentTarget;
+  document.querySelectorAll('.todo-item').forEach(i => i.classList.remove('drag-over'));
+  if (el.dataset.id !== todoDragSrcId) el.classList.add('drag-over');
+  todoDragOverId = el.dataset.id;
+}
+
+function todoDrop(event) {
+  event.preventDefault();
+  if (!todoDragSrcId || todoDragSrcId === todoDragOverId) return;
+
+  const openItems = todoItems
+    .filter(t => !t.completed)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const srcIdx = openItems.findIndex(t => t.id === todoDragSrcId);
+  const dstIdx = openItems.findIndex(t => t.id === todoDragOverId);
+  if (srcIdx < 0 || dstIdx < 0) return;
+
+  const [moved] = openItems.splice(srcIdx, 1);
+  openItems.splice(dstIdx, 0, moved);
+  openItems.forEach((item, i) => { item.order = i; });
+
+  fetch('/api/todos/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order: openItems.map(t => t.id) })
+  }).catch(e => console.error('Error reordering todos:', e));
+
+  renderTodos();
+}
+
+function todoDragEnd() {
+  document.querySelectorAll('.todo-item').forEach(i => i.classList.remove('dragging', 'drag-over'));
+  todoDragSrcId  = null;
+  todoDragOverId = null;
+}
+
+// Keyboard shortcut: Enter saves, Escape closes
+document.addEventListener('keydown', (e) => {
+  const overlay = document.getElementById('todo-modal-overlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeTodoModal(); }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveTodoModal(); }
+});
