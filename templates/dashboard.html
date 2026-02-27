@@ -12,8 +12,13 @@
   <div class="container">
     <div class="header">
       <div class="title">
-        <h1>Server Dashboard</h1>
-        <div class="subtitle">Real-time system monitoring & control</div>
+        <div class="title-row">
+          <button class="admin-lock-btn" id="admin-lock-btn" onclick="toggleAdminModal()" title="Admin access">🔒</button>
+          <div>
+            <h1>Server Dashboard</h1>
+            <div class="subtitle">Real-time system monitoring & control</div>
+          </div>
+        </div>
       </div>
 
       <div class="top-right">
@@ -73,27 +78,30 @@
       <!-- Sidebar Navigation -->
       <div class="sidebar">
         <div class="sidebar-title">Navigation</div>
-        <div class="nav-item active" data-window="metrics" onclick="switchWindow('metrics')">
-          <span class="nav-icon">📊</span>
-          <span>System Metrics</span>
-        </div>
-        <div class="nav-item" data-window="controls" onclick="switchWindow('controls')">
-          <span class="nav-icon">⚙️</span>
-          <span>Controls & Services</span>
-        </div>
-        <div class="nav-item" data-window="rally" onclick="switchWindow('rally')">
+        <!-- Public nav items -->
+        <div class="nav-item active" data-window="rally" onclick="switchWindow('rally')">
           <span class="nav-icon">🚐</span>
           <span>Rally Bot</span>
         </div>
-        <div class="nav-item" data-window="tmux" onclick="switchWindow('tmux')">
+        <!-- Admin-only nav items (hidden until unlocked) -->
+        <div class="nav-admin-divider" id="nav-admin-divider">Admin</div>
+        <div class="nav-item nav-admin-item" data-window="metrics" onclick="switchWindow('metrics')">
+          <span class="nav-icon">📊</span>
+          <span>System Metrics</span>
+        </div>
+        <div class="nav-item nav-admin-item" data-window="controls" onclick="switchWindow('controls')">
+          <span class="nav-icon">⚙️</span>
+          <span>Controls & Services</span>
+        </div>
+        <div class="nav-item nav-admin-item" data-window="tmux" onclick="switchWindow('tmux')">
           <span class="nav-icon">🖥️</span>
           <span>Tmux Sessions</span>
         </div>
-        <div class="nav-item" data-window="terminal" onclick="switchWindow('terminal')">
+        <div class="nav-item nav-admin-item" data-window="terminal" onclick="switchWindow('terminal')">
           <span class="nav-icon">💻</span>
           <span>Terminal</span>
         </div>
-        <div class="nav-item" data-window="todo" onclick="switchWindow('todo')">
+        <div class="nav-item nav-admin-item" data-window="todo" onclick="switchWindow('todo')">
           <span class="nav-icon">✅</span>
           <span>To-Do</span>
         </div>
@@ -102,7 +110,7 @@
       <!-- Content Area -->
       <div class="content-area">
         <!-- System Metrics Window -->
-        <div class="window active" id="window-metrics">
+        <div class="window" id="window-metrics">
           <div class="section">
             <div class="section-title">System Metrics</div>
             <div class="grid">
@@ -228,7 +236,7 @@
           </div>
         </div>
         <!-- Rally Bot Window -->
-        <div class="window" id="window-rally">
+        <div class="window active" id="window-rally">
           <div class="section">
             <div class="section-title">Rally Bot - Station Routes</div>
             
@@ -328,25 +336,11 @@
           <div class="section">
             <div class="section-title">Terminal</div>
 
-            <!-- Lock screen -->
-            <div id="term-lock">
-              <div class="term-lock-box">
-                <div class="term-lock-icon">🔒</div>
-                <div class="term-lock-title">Authentication required</div>
-                <div class="term-lock-sub">Enter the terminal password to continue</div>
-                <form id="term-login-form" onsubmit="termLogin(event)" autocomplete="off">
-                  <input class="term-password-input" type="password" id="term-password" placeholder="Password" autofocus />
-                  <button class="btn term-login-btn" type="submit">Unlock</button>
-                </form>
-                <div id="term-login-error" class="term-login-error"></div>
-              </div>
-            </div>
-
-            <!-- Terminal UI (shown after auth) -->
-            <div id="term-ui" style="display:none;">
+            <!-- Terminal UI -->
+            <div id="term-ui">
               <div class="term-topbar">
                 <span id="term-cwd" class="term-cwd">~</span>
-                <button class="btn term-logout-btn" onclick="termLogout()">🔒 Lock</button>
+                <button class="btn term-logout-btn" onclick="lockAdmin()">🔒 Lock Admin</button>
               </div>
               <div class="term-body" id="term-body"></div>
               <div class="term-input-row">
@@ -420,6 +414,20 @@
     </div>
 
     <div class="footer">Auto-refresh every 5 seconds</div>
+  </div>
+
+  <!-- Admin authentication modal -->
+  <div class="admin-modal-overlay" id="admin-modal-overlay" onclick="closeAdminModalOverlay(event)">
+    <div class="admin-modal">
+      <div class="admin-modal-icon" id="admin-modal-icon">🔒</div>
+      <div class="admin-modal-title" id="admin-modal-title">Admin Access</div>
+      <div class="admin-modal-sub">Enter the admin password to unlock restricted features</div>
+      <form id="admin-login-form" onsubmit="submitAdminPassword(event)" autocomplete="off">
+        <input class="term-password-input" type="password" id="admin-password-input" placeholder="Password" />
+        <button class="btn term-login-btn" type="submit">Unlock</button>
+      </form>
+      <div id="admin-login-error" class="term-login-error"></div>
+    </div>
   </div>
 
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>

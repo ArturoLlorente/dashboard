@@ -55,7 +55,10 @@ load_env()
 IPTV_USERNAME = os.environ.get('IPTV_USERNAME', 'your_username')
 IPTV_PASSWORD = os.environ.get('IPTV_PASSWORD', 'your_password')
 IPTV_HOST = os.environ.get('IPTV_HOST', 'your_host.com')
-TERMINAL_PASSWORD = os.environ.get('TERMINAL_PASSWORD', 'changeme')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
+
+# In-memory admin sessions: token -> {created_at}
+admin_sessions = {}
 
 # In-memory terminal sessions: token -> {cwd, created_at}
 terminal_sessions = {}
@@ -513,20 +516,52 @@ def reboot():
     run_command('sudo reboot')
     return jsonify({'success': True, 'message': 'Rebooting...'})
 
+# ---- Admin endpoints ----
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    """Authenticate as admin and get a session token"""
+    data = request.get_json() or {}
+    if data.get('password') == ADMIN_PASSWORD:
+        token = secrets.token_hex(16)
+        admin_sessions[token] = {'created_at': time.time()}
+        return jsonify({'success': True, 'token': token})
+    return jsonify({'success': False, 'error': 'Invalid password'}), 401
+
+
+@app.route('/api/admin/logout', methods=['POST'])
+def admin_logout():
+    """Invalidate an admin session token"""
+    data = request.get_json() or {}
+    admin_sessions.pop(data.get('token', ''), None)
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/verify', methods=['POST'])
+def admin_verify():
+    """Verify an admin session token is still valid"""
+    data = request.get_json() or {}
+    token = data.get('token', '')
+    session = admin_sessions.get(token)
+    if not session:
+        return jsonify({'valid': False}), 401
+    if time.time() - session['created_at'] > 86400:  # 24-hour expiry
+        admin_sessions.pop(token, None)
+        return jsonify({'valid': False}), 401
+    return jsonify({'valid': True})
+
+
 # ---- Terminal endpoints ----
 
 @app.route('/api/terminal/login', methods=['POST'])
 def terminal_login():
-    """Authenticate and get a session token"""
-    data = request.get_json() or {}
-    if data.get('password') == TERMINAL_PASSWORD:
-        token = secrets.token_hex(16)
-        terminal_sessions[token] = {
-            'cwd': str(Path.home()),
-            'created_at': time.time()
-        }
-        return jsonify({'success': True, 'token': token, 'cwd': str(Path.home())})
-    return jsonify({'success': False, 'error': 'Invalid password'}), 401
+    """Create a terminal session (admin gate is handled by the frontend)"""
+    token = secrets.token_hex(16)
+    terminal_sessions[token] = {
+        'cwd': str(Path.home()),
+        'created_at': time.time()
+    }
+    return jsonify({'success': True, 'token': token, 'cwd': str(Path.home())})
 
 
 def _get_terminal_session(data):

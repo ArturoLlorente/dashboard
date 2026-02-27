@@ -34,10 +34,18 @@ function updateQuickStats() {
     .catch(err => console.error('Error fetching quick stats:', err));
 }
 
+// Admin-only windows (require admin authentication)
+const ADMIN_WINDOWS = new Set(['metrics', 'controls', 'tmux', 'terminal', 'todo']);
+let isAdmin = false;
+let adminToken = sessionStorage.getItem('adminToken') || null;
+
 // ---- window switching ----
-let currentWindow = 'metrics';
+let currentWindow = 'rally';
 
 function switchWindow(windowName) {
+  // Guard: admin-only windows are not accessible without authentication
+  if (ADMIN_WINDOWS.has(windowName) && !isAdmin) return;
+
   // Hide all windows
   document.querySelectorAll('.window').forEach(w => w.classList.remove('active'));
   // Remove active from all nav items
@@ -64,10 +72,105 @@ function switchWindow(windowName) {
     loadTodos();
   }
 
-  // Terminal lock/unlock
+  // Terminal: auto-login if no session exists (admin gate already checked above)
   if (windowName === 'terminal') {
-    if (termToken) termShowUI();
-    else termShowLock();
+    if (!termToken) termAutoLogin();
+    else setTimeout(() => document.getElementById('term-input').focus(), 50);
+  }
+}
+
+// ---- Admin authentication ----
+
+function applyAdminState(active) {
+  isAdmin = active;
+  document.querySelectorAll('.nav-admin-item').forEach(el => {
+    el.style.display = active ? 'flex' : 'none';
+  });
+  document.querySelectorAll('.nav-admin-divider').forEach(el => {
+    el.style.display = active ? 'block' : 'none';
+  });
+  const lockBtn = document.getElementById('admin-lock-btn');
+  if (lockBtn) lockBtn.textContent = active ? '🔓' : '🔒';
+}
+
+function toggleAdminModal() {
+  if (isAdmin) {
+    lockAdmin();
+  } else {
+    openAdminModal();
+  }
+}
+
+function openAdminModal() {
+  const overlay = document.getElementById('admin-modal-overlay');
+  overlay.classList.add('open');
+  setTimeout(() => {
+    const inp = document.getElementById('admin-password-input');
+    if (inp) inp.focus();
+  }, 60);
+}
+
+function closeAdminModal() {
+  document.getElementById('admin-modal-overlay').classList.remove('open');
+  document.getElementById('admin-password-input').value = '';
+  document.getElementById('admin-login-error').textContent = '';
+}
+
+function closeAdminModalOverlay(event) {
+  if (event.target === document.getElementById('admin-modal-overlay')) closeAdminModal();
+}
+
+function submitAdminPassword(event) {
+  event.preventDefault();
+  const pw = document.getElementById('admin-password-input').value;
+  document.getElementById('admin-login-error').textContent = '';
+  fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      adminToken = data.token;
+      sessionStorage.setItem('adminToken', adminToken);
+      applyAdminState(true);
+      closeAdminModal();
+    } else {
+      document.getElementById('admin-login-error').textContent = data.error || 'Invalid password';
+      document.getElementById('admin-password-input').value = '';
+      document.getElementById('admin-password-input').focus();
+    }
+  })
+  .catch(() => { document.getElementById('admin-login-error').textContent = 'Network error'; });
+}
+
+function lockAdmin() {
+  // Invalidate admin session on server
+  if (adminToken) {
+    fetch('/api/admin/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: adminToken })
+    }).catch(() => {});
+    adminToken = null;
+    sessionStorage.removeItem('adminToken');
+  }
+  // Clear terminal session too
+  if (termToken) {
+    fetch('/api/terminal/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: termToken })
+    }).catch(() => {});
+    termToken = null;
+    sessionStorage.removeItem('termToken');
+    document.getElementById('term-body').innerHTML = '';
+  }
+  applyAdminState(false);
+  // If on an admin window, return to Rally Bot
+  if (ADMIN_WINDOWS.has(currentWindow)) {
+    switchWindow('rally');
   }
 }
 
@@ -662,44 +765,11 @@ function termAppendCmd(cmd) {
   body.scrollTop = body.scrollHeight;
 }
 
-function termShowUI() {
-  document.getElementById('term-lock').style.display = 'none';
-  document.getElementById('term-ui').style.display   = 'block';
-  termSetCwd(termCwd);
-  if (document.getElementById('term-body').childElementCount === 0) {
-    termAppend('Connected. Type commands below.', 'info');
-  }
-  setTimeout(() => document.getElementById('term-input').focus(), 50);
-}
-
-function termShowLock() {
-  document.getElementById('term-lock').style.display = 'block';
-  document.getElementById('term-ui').style.display   = 'none';
-  document.getElementById('term-password').value = '';
-  document.getElementById('term-login-error').textContent = '';
-}
-
-// On page load: restore session if token exists
-if (termToken) {
-  // Validate token by doing a dummy exec
-  fetch('/api/terminal/exec', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({token: termToken, command: ''})
-  }).then(r => {
-    if (r.ok) termShowUI();
-    else { termToken = null; sessionStorage.removeItem('termToken'); }
-  }).catch(() => {});
-}
-
-function termLogin(e) {
-  e.preventDefault();
-  const pw = document.getElementById('term-password').value;
-  document.getElementById('term-login-error').textContent = '';
+function termAutoLogin() {
   fetch('/api/terminal/login', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({password: pw})
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
   })
   .then(r => r.json())
   .then(data => {
@@ -707,26 +777,14 @@ function termLogin(e) {
       termToken = data.token;
       sessionStorage.setItem('termToken', termToken);
       if (data.cwd) { termCwd = data.cwd; sessionStorage.setItem('termCwd', data.cwd); }
-      termShowUI();
-    } else {
-      document.getElementById('term-login-error').textContent = data.error || 'Login failed';
-      document.getElementById('term-password').value = '';
-      document.getElementById('term-password').focus();
+      termSetCwd(termCwd);
+      if (document.getElementById('term-body').childElementCount === 0) {
+        termAppend('Connected. Type commands below.', 'info');
+      }
+      setTimeout(() => document.getElementById('term-input').focus(), 50);
     }
   })
-  .catch(() => { document.getElementById('term-login-error').textContent = 'Network error'; });
-}
-
-function termLogout() {
-  fetch('/api/terminal/logout', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({token: termToken})
-  }).catch(() => {});
-  termToken = null;
-  sessionStorage.removeItem('termToken');
-  document.getElementById('term-body').innerHTML = '';
-  termShowLock();
+  .catch(() => {});
 }
 
 function termExec(cmd) {
@@ -740,7 +798,7 @@ function termExec(cmd) {
     body: JSON.stringify({token: termToken, command: cmd})
   })
   .then(r => {
-    if (r.status === 401) { termLogout(); throw new Error('session_expired'); }
+    if (r.status === 401) { termToken = null; sessionStorage.removeItem('termToken'); termAutoLogin(); throw new Error('session_expired'); }
     return r.json();
   })
   .then(data => {
@@ -807,6 +865,9 @@ function termKeydown(e) {
 // ---- Rally Bot Functions ----
 let rallyAllRoutes = [];      // full unfiltered dataset
 let rallyLoaded = false;
+
+// Load rally bot data on startup (default window)
+loadRallyBotData();
 
 function loadRallyBotData() {
   if (rallyLoaded) { applyRallyFilters(); return; }
@@ -1471,8 +1532,39 @@ function todoDragEnd() {
 
 // Keyboard shortcut: Enter saves, Escape closes
 document.addEventListener('keydown', (e) => {
-  const overlay = document.getElementById('todo-modal-overlay');
-  if (!overlay || !overlay.classList.contains('open')) return;
-  if (e.key === 'Escape') { e.preventDefault(); closeTodoModal(); }
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveTodoModal(); }
+  // Todo modal shortcuts
+  const todoOverlay = document.getElementById('todo-modal-overlay');
+  if (todoOverlay && todoOverlay.classList.contains('open')) {
+    if (e.key === 'Escape') { e.preventDefault(); closeTodoModal(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveTodoModal(); }
+    return;
+  }
+  // Admin modal shortcut
+  const adminOverlay = document.getElementById('admin-modal-overlay');
+  if (adminOverlay && adminOverlay.classList.contains('open')) {
+    if (e.key === 'Escape') { e.preventDefault(); closeAdminModal(); }
+  }
 });
+
+// ---- Admin state initialisation (runs on page load) ----
+// Hide admin nav items immediately (before any async check)
+applyAdminState(false);
+
+if (adminToken) {
+  // Verify token is still valid on the server
+  fetch('/api/admin/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: adminToken })
+  })
+  .then(r => {
+    if (r.ok) {
+      applyAdminState(true);
+    } else {
+      adminToken = null;
+      sessionStorage.removeItem('adminToken');
+      applyAdminState(false);
+    }
+  })
+  .catch(() => { applyAdminState(false); });
+}
