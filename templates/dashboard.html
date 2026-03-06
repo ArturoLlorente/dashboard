@@ -85,6 +85,10 @@
         </div>
         <!-- Admin-only nav items (hidden until unlocked) -->
         <div class="nav-admin-divider" id="nav-admin-divider">Admin</div>
+        <div class="nav-item nav-admin-item" data-window="rally-stats" onclick="switchWindow('rally-stats')">
+          <span class="nav-icon">📈</span>
+          <span>Rally Stats</span>
+        </div>
         <div class="nav-item nav-admin-item" data-window="metrics" onclick="switchWindow('metrics')">
           <span class="nav-icon">📊</span>
           <span>System Metrics</span>
@@ -92,14 +96,6 @@
         <div class="nav-item nav-admin-item" data-window="controls" onclick="switchWindow('controls')">
           <span class="nav-icon">⚙️</span>
           <span>Controls & Services</span>
-        </div>
-        <div class="nav-item nav-admin-item" data-window="tmux" onclick="switchWindow('tmux')">
-          <span class="nav-icon">🖥️</span>
-          <span>Tmux Sessions</span>
-        </div>
-        <div class="nav-item nav-admin-item" data-window="terminal" onclick="switchWindow('terminal')">
-          <span class="nav-icon">💻</span>
-          <span>Terminal</span>
         </div>
         <div class="nav-item nav-admin-item" data-window="todo" onclick="switchWindow('todo')">
           <span class="nav-icon">✅</span>
@@ -175,13 +171,6 @@
           <div class="section">
             <div class="section-title">Controls & Services</div>
             <div class="grid">
-              <!-- Services -->
-              <div class="card">
-                <h2><span>Services</span><span class="pill ok" id="svc-pill">OK</span></h2>
-                <div class="rows" id="services-list">
-                  <div class="stat"><span class="stat-label">Loading</span><span class="stat-value">...</span></div>
-                </div>
-              </div>
 
               <!-- IPTV -->
               <div class="card">
@@ -209,32 +198,6 @@
           </div>
         </div>
 
-        <!-- Tmux Sessions Window -->
-        <div class="window" id="window-tmux">
-          <div class="section">
-            <div class="section-title">Tmux Sessions</div>
-            <div class="grid">
-              <!-- Tmux Overview -->
-              <div class="card">
-                <h2><span>Overview</span><span class="pill ok" id="tmux-pill">OK</span></h2>
-                <div class="rows">
-                  <div class="stat"><span class="stat-label">Total Sessions</span><span class="stat-value" id="tmux-total">--</span></div>
-                  <div class="stat"><span class="stat-label">Active Sessions</span><span class="stat-value" id="tmux-active">--</span></div>
-                  <div class="stat"><span class="stat-label">Total Windows</span><span class="stat-value" id="tmux-windows">--</span></div>
-                  <div class="stat"><span class="stat-label">Total Panes</span><span class="stat-value" id="tmux-panes">--</span></div>
-                </div>
-              </div>
-              
-              <!-- Session List -->
-              <div class="card" style="grid-column: span 2;">
-                <h2><span>Sessions</span></h2>
-                <div id="tmux-sessions-list">
-                  <div class="stat"><span class="stat-label">Loading...</span><span class="stat-value">--</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
         <!-- Rally Bot Window -->
         <div class="window active" id="window-rally">
           <div class="section">
@@ -331,28 +294,79 @@
             </div>
           </div>
         </div>
-        <!-- Terminal Window -->
-        <div class="window" id="window-terminal">
+        <!-- Rally Bot Stats Window (admin-only) -->
+        <div class="window" id="window-rally-stats">
           <div class="section">
-            <div class="section-title">Terminal</div>
+            <div class="section-title">Rally Bot Stats</div>
 
-            <!-- Terminal UI -->
-            <div id="term-ui">
-              <div class="term-topbar">
-                <span id="term-cwd" class="term-cwd">~</span>
-                <button class="btn term-logout-btn" onclick="lockAdmin()">🔒 Lock Admin</button>
+            <!-- Summary stat cards -->
+            <div class="rally-stats" id="rbs-summary">
+              <div class="rally-stat-card">
+                <div class="rally-stat-value" id="rbs-notifs">--</div>
+                <div class="rally-stat-label">Notifications Sent</div>
               </div>
-              <div class="term-body" id="term-body"></div>
-              <div class="term-input-row">
-                <span class="term-prompt" id="term-prompt">$</span>
-                <input class="term-input" id="term-input" type="text"
-                  placeholder="Enter command…"
-                  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                  onkeydown="termKeydown(event)" />
+              <div class="rally-stat-card rbs-warn-card rbs-clickable" onclick="rbsShowDetail('warn')" title="Click to see warning messages">
+                <div class="rally-stat-value rbs-warn-value" id="rbs-warnings">--</div>
+                <div class="rally-stat-label">Recent Warnings</div>
               </div>
+              <div class="rally-stat-card rbs-err-card rbs-clickable" onclick="rbsShowDetail('err')" title="Click to see error messages">
+                <div class="rally-stat-value rbs-err-value" id="rbs-errors">--</div>
+                <div class="rally-stat-label">Recent Errors</div>
+              </div>
+            </div>
+
+            <div class="rbs-grid">
+              <!-- Data info -->
+              <div class="card">
+                <h2><span>Data Overview</span></h2>
+                <div class="rows">
+                  <div class="stat"><span class="stat-label">Last refreshed</span><span class="stat-value" id="rbs-freshness">--</span></div>
+                  <div class="stat"><span class="stat-label">Earliest date</span><span class="stat-value" id="rbs-earliest">--</span></div>
+                  <div class="stat"><span class="stat-label">Latest date</span><span class="stat-value" id="rbs-latest">--</span></div>
+                  <div class="stat"><span class="stat-label">Log file size</span><span class="stat-value" id="rbs-logsize">--</span></div>
+                  <div class="stat"><span class="stat-label">Last log entry</span><span class="stat-value" id="rbs-lastlog">--</span></div>
+                  <div class="stat"><span class="stat-label">Favorites saved</span><span class="stat-value" id="rbs-favs">--</span></div>
+                </div>
+              </div>
+
+              <!-- Model breakdown -->
+              <div class="card">
+                <h2><span>Van Models</span></h2>
+                <div id="rbs-models" class="rbs-table-wrap">
+                  <div class="loading-message">Loading…</div>
+                </div>
+              </div>
+
+              <!-- Top origins -->
+              <div class="card">
+                <h2><span>Top Origins</span></h2>
+                <div id="rbs-top-origins" class="rbs-table-wrap">
+                  <div class="loading-message">Loading…</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Log tail -->
+            <div class="card" style="margin-top:16px">
+              <h2><span>Recent Log</span>
+                <button class="btn" style="margin-left:auto;font-size:11px;padding:3px 10px" onclick="loadRallyStats()">↻ Refresh</button>
+              </h2>
+              <div id="rbs-log" class="rbs-log"><div class="loading-message">Loading…</div></div>
             </div>
           </div>
         </div>
+
+        <!-- RBS detail modal -->
+        <div class="rbs-detail-overlay" id="rbs-detail-overlay" onclick="rbsCloseDetail(event)">
+          <div class="rbs-detail-modal">
+            <div class="rbs-detail-header">
+              <span id="rbs-detail-title">Log Messages</span>
+              <button class="todo-modal-close" onclick="rbsCloseDetail()">✕</button>
+            </div>
+            <div id="rbs-detail-body" class="rbs-log"></div>
+          </div>
+        </div>
+
         <!-- To-Do Window -->
         <div class="window" id="window-todo">
           <div class="section">

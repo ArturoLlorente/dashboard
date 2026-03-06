@@ -813,6 +813,119 @@ def rally_bot_routes():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+
+@app.route('/api/rally-bot/stats')
+def rally_bot_stats():
+    """Get rally bot statistics for admin dashboard"""
+    try:
+        rally_dir = Path(__file__).parent.parent / 'rally_bot'
+        result = {}
+
+        # --- station_routes.json ---
+        routes_file = rally_dir / 'station_routes.json'
+        if routes_file.exists():
+            with open(routes_file, 'r') as f:
+                all_routes = json.load(f)
+
+            all_returns = [ret for r in all_routes for ret in r.get('returns', [])]
+
+            model_counts = {}
+            for ret in all_returns:
+                m = ret.get('model_name') or 'Unknown'
+                model_counts[m] = model_counts.get(m, 0) + 1
+
+            top_origins = sorted(
+                [{'origin': r['origin'], 'count': len(r.get('returns', []))} for r in all_routes],
+                key=lambda x: x['count'], reverse=True
+            )[:10]
+
+            all_dates = []
+            for ret in all_returns:
+                for d in ret.get('available_dates', []):
+                    try:
+                        all_dates.append(datetime.strptime(d['startDate'], '%d/%m/%Y'))
+                    except Exception:
+                        pass
+
+            result['routes'] = {
+                'data_freshness': datetime.fromtimestamp(routes_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                'total_origins': len(all_routes),
+                'total_returns': len(all_returns),
+                'unique_destinations': len(set(ret['destination'] for ret in all_returns)),
+                'model_breakdown': [{'model': k, 'count': v} for k, v in sorted(model_counts.items(), key=lambda x: x[1], reverse=True)],
+                'top_origins': top_origins,
+                'earliest_date': min(all_dates).strftime('%d/%m/%Y') if all_dates else None,
+                'latest_date': max(all_dates).strftime('%d/%m/%Y') if all_dates else None,
+            }
+        else:
+            result['routes'] = None
+
+        # --- notification_history.json ---
+        notif_file = rally_dir / 'notification_history.json'
+        if notif_file.exists():
+            with open(notif_file, 'r') as f:
+                notif_data = json.load(f)
+            per_user = {uid: len(notifs) for uid, notifs in notif_data.items()}
+            result['notifications'] = {
+                'total': sum(per_user.values()),
+                'per_user': per_user,
+            }
+        else:
+            result['notifications'] = None
+
+        # --- user_favorites.json ---
+        favs_file = rally_dir / 'user_favorites.json'
+        if favs_file.exists():
+            with open(favs_file, 'r') as f:
+                favs_data = json.load(f)
+            result['favorites'] = {
+                'total': sum(len(v) for v in favs_data.values()),
+                'per_user': {uid: len(favs) for uid, favs in favs_data.items()},
+            }
+        else:
+            result['favorites'] = None
+
+        # --- bot.log (last ~200 KB for recent stats) ---
+        log_file = rally_dir / 'bot.log'
+        if log_file.exists():
+            with open(log_file, 'r', errors='replace') as f:
+                f.seek(0, 2)
+                size = f.tell()
+                chunk = min(size, 200000)
+                f.seek(size - chunk)
+                lines = f.read(chunk).splitlines()
+
+            error_count = sum(1 for l in lines if ' - ERROR - ' in l)
+            warning_count = sum(1 for l in lines if ' - WARNING - ' in l)
+
+            last_ts = None
+            for line in reversed(lines):
+                parts = line.split(' - ', 2)
+                if len(parts) >= 2 and parts[0].strip():
+                    last_ts = parts[0].strip()
+                    break
+
+            recent = [l for l in lines[-100:] if l.strip()][-25:]
+            warning_lines = [l for l in lines if ' - WARNING - ' in l][-50:]
+            error_lines   = [l for l in lines if ' - ERROR - '   in l][-50:]
+
+            result['log'] = {
+                'file_size_mb': round(log_file.stat().st_size / (1024 * 1024), 1),
+                'recent_errors': error_count,
+                'recent_warnings': warning_count,
+                'last_entry': last_ts,
+                'recent_lines': recent,
+                'warning_lines': warning_lines,
+                'error_lines': error_lines,
+            }
+        else:
+            result['log'] = None
+
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/quick-stats')
 def quick_stats():
     """Get quick stats for dashboard header (lightweight)"""

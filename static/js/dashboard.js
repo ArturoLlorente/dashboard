@@ -35,7 +35,7 @@ function updateQuickStats() {
 }
 
 // Admin-only windows (require admin authentication)
-const ADMIN_WINDOWS = new Set(['metrics', 'controls', 'tmux', 'terminal', 'todo']);
+const ADMIN_WINDOWS = new Set(['metrics', 'controls', 'todo', 'rally-stats']);
 let isAdmin = false;
 let adminToken = sessionStorage.getItem('adminToken') || null;
 
@@ -62,8 +62,8 @@ function switchWindow(windowName) {
   // Load window-specific data
   if (windowName === 'rally') {
     loadRallyBotData();
-  } else if (windowName === 'tmux') {
-    updateTmux();
+  } else if (windowName === 'rally-stats') {
+    loadRallyStats();
   } else if (windowName === 'metrics') {
     updateDashboard();
   } else if (windowName === 'controls') {
@@ -72,11 +72,6 @@ function switchWindow(windowName) {
     loadTodos();
   }
 
-  // Terminal: auto-login if no session exists (admin gate already checked above)
-  if (windowName === 'terminal') {
-    if (!termToken) termAutoLogin();
-    else setTimeout(() => document.getElementById('term-input').focus(), 50);
-  }
 }
 
 // ---- Admin authentication ----
@@ -155,17 +150,6 @@ function lockAdmin() {
     }).catch(() => {});
     adminToken = null;
     sessionStorage.removeItem('adminToken');
-  }
-  // Clear terminal session too
-  if (termToken) {
-    fetch('/api/terminal/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: termToken })
-    }).catch(() => {});
-    termToken = null;
-    sessionStorage.removeItem('termToken');
-    document.getElementById('term-body').innerHTML = '';
   }
   applyAdminState(false);
   // If on an admin window, return to Rally Bot
@@ -378,82 +362,6 @@ slider.addEventListener('input', (e) => {
 // ---- network delta state (backend returns bytes totals) ----
 let prevNetTotals = null; // { rxBytes, txBytes, ts }
 
-// ---- tmux sessions ----
-function updateTmux(){
-  fetch('/api/tmux')
-    .then(r => r.json())
-    .then(data => {
-      const total = data.total || 0;
-      const sessions = data.sessions || [];
-      
-      document.getElementById('tmux-total').textContent = total;
-      
-      let activeCount = 0;
-      let totalWindows = 0;
-      let totalPanes = 0;
-      let sessionsHTML = '';
-      
-      if (sessions.length === 0) {
-        sessionsHTML = '<div class="stat"><span class="stat-label">No tmux sessions</span><span class="stat-value">--</span></div>';
-      } else {
-        sessions.forEach(session => {
-          if (session.attached) activeCount++;
-          totalWindows += session.windows || 0;
-          totalPanes += session.panes || 0;
-          
-          const statusText = session.attached ? 'Attached' : 'Detached';
-          const statusClass = session.attached ? 'ok' : 'bad';
-          
-          sessionsHTML += `
-            <div class="card" style="margin-bottom:12px;background:rgba(2,6,23,.35);">
-              <h2 style="margin-bottom:10px;">
-                <span>${session.name}</span>
-                <span class="pill ${statusClass}">${statusText}</span>
-              </h2>
-              <div class="rows">
-                <div class="stat">
-                  <span class="stat-label">Windows</span>
-                  <span class="stat-value">${session.windows}</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-label">Panes</span>
-                  <span class="stat-value">${session.panes}</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-label">Uptime</span>
-                  <span class="stat-value">${session.uptime}</span>
-                </div>
-              </div>`;
-          
-          if (session.window_list && session.window_list.length > 0) {
-            sessionsHTML += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,.10);">';
-            sessionsHTML += '<div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:900;">Windows</div>';
-            session.window_list.forEach(win => {
-              const activeIndicator = win.active ? '●' : '○';
-              const activeColor = win.active ? 'var(--accent2)' : 'var(--muted)';
-              sessionsHTML += `<div style="font-size:12px;color:var(--muted);margin:4px 0;"><span style="color:${activeColor};margin-right:6px;">${activeIndicator}</span>${win.name}</div>`;
-            });
-            sessionsHTML += '</div>';
-          }
-          
-          sessionsHTML += '</div>';
-        });
-      }
-      
-      document.getElementById('tmux-active').textContent = activeCount;
-      document.getElementById('tmux-windows').textContent = totalWindows;
-      document.getElementById('tmux-panes').textContent = totalPanes;
-      document.getElementById('tmux-sessions-list').innerHTML = sessionsHTML;
-      
-      setPill('tmux-pill', total > 0);
-    })
-    .catch(err => {
-      console.error('Error fetching tmux sessions:', err);
-      document.getElementById('tmux-sessions-list').innerHTML = 
-        '<div class="stat"><span class="stat-label">Error</span><span class="stat-value">Failed to load</span></div>';
-    });
-}
-
 // ---- battery history ----
 function loadBatteryHistory() {
   fetch('/api/battery/history')
@@ -615,35 +523,18 @@ function updateDashboard(){
       }
       prevNetTotals = { rxBytes, txBytes, ts: now };
 
-      // Services
-      let servicesHTML = '';
-      let anyBad = false;
-      for (const [svc, st] of Object.entries(data.services || {})) {
-        const active = (st === 'active');
-        anyBad = anyBad || !active;
-        servicesHTML += `
-          <div class="stat">
-            <span class="stat-label">${svc}</span>
-            <span class="pill ${active ? 'ok' : 'bad'}">${st}</span>
-          </div>`;
-      }
-      document.getElementById('services-list').innerHTML = servicesHTML || `
-        <div class="stat"><span class="stat-label">No services</span><span class="stat-value">--</span></div>`;
-
       // Threshold pills
       setPill('cpu-pill', !(Number.isFinite(cpu) && cpu > 90));
       setPill('mem-pill', !(Number.isFinite(mem) && mem > 85));
       setPill('disk-pill', !(Number.isFinite(disk) && disk > 90));
       setPill('temp-pill', !(Number.isFinite(temp) && temp > 80));
-      setPill('svc-pill', !anyBad);
 
       // Overall dot
       const overallBad =
         (Number.isFinite(cpu) && cpu > 95) ||
         (Number.isFinite(mem) && mem > 92) ||
         (Number.isFinite(disk) && disk > 95) ||
-        (Number.isFinite(temp) && temp > 85) ||
-        anyBad;
+        (Number.isFinite(temp) && temp > 85);
 
       const dot = document.getElementById('status-dot');
       dot.style.background = overallBad ? 'var(--bad)' : 'var(--accent)';
@@ -709,11 +600,8 @@ function smartRefresh() {
   // Update only the current window's data
   if (currentWindow === 'metrics' || currentWindow === 'controls') {
     updateDashboard();
-  } else if (currentWindow === 'tmux') {
-    updateTmux();
   }
-  // Rally bot doesn't need auto-refresh (user-driven filters)
-  // Terminal doesn't need auto-refresh (user-driven commands)
+  // Rally bot and stats don't need auto-refresh (user-driven)
 }
 
 // Load battery history on startup and refresh every 5 minutes
@@ -725,141 +613,141 @@ loadMetricsHistory();
 updateDashboard();
 setInterval(smartRefresh, REFRESH_MS);
 
-// ---- Terminal ----
-let termToken = sessionStorage.getItem('termToken') || null;
-let termCwd   = sessionStorage.getItem('termCwd')   || '~';
-let termHistory = [];   // command history
-let termHistIdx = -1;   // navigation index (-1 = live input)
-let termPendingSave = '';// saved live input while navigating history
 
-function termSetCwd(cwd) {
-  termCwd = cwd;
-  sessionStorage.setItem('termCwd', cwd);
-  const shortCwd = cwd.replace(/^\/home\/[^/]+/, '~');
-  document.getElementById('term-cwd').textContent = shortCwd;
-  document.getElementById('term-prompt').textContent = shortCwd + ' $';
-}
 
-function termAppend(text, cls) {
-  const body = document.getElementById('term-body');
-  const lines = String(text).split('\n');
-  lines.forEach(line => {
-    const el = document.createElement('div');
-    el.className = 'term-line ' + (cls || 'out');
-    el.textContent = line;
-    body.appendChild(el);
+// ---- Rally Bot Stats (admin window) ----
+let rbsWarnLines = [];
+let rbsErrLines  = [];
+
+function loadRallyStats() {
+  // Show loading state
+  ['rbs-notifs','rbs-warnings','rbs-errors'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '…';
   });
-  body.scrollTop = body.scrollHeight;
-}
+  ['rbs-models','rbs-top-origins','rbs-log'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="loading-message">Loading…</div>';
+  });
 
-function termAppendCmd(cmd) {
-  const body = document.getElementById('term-body');
-  const el = document.createElement('div');
-  el.className = 'term-line cmd';
-  const ps1 = document.createElement('span');
-  ps1.className = 'term-ps1';
-  ps1.textContent = termCwd.replace(/^\/home\/[^/]+/, '~') + ' $ ';
-  el.appendChild(ps1);
-  el.appendChild(document.createTextNode(cmd));
-  body.appendChild(el);
-  body.scrollTop = body.scrollHeight;
-}
-
-function termAutoLogin() {
-  fetch('/api/terminal/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      termToken = data.token;
-      sessionStorage.setItem('termToken', termToken);
-      if (data.cwd) { termCwd = data.cwd; sessionStorage.setItem('termCwd', data.cwd); }
-      termSetCwd(termCwd);
-      if (document.getElementById('term-body').childElementCount === 0) {
-        termAppend('Connected. Type commands below.', 'info');
+  fetch('/api/rally-bot/stats')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        document.getElementById('rbs-log').innerHTML =
+          `<div class="loading-message">Error: ${data.error}</div>`;
+        return;
       }
-      setTimeout(() => document.getElementById('term-input').focus(), 50);
-    }
-  })
-  .catch(() => {});
+
+      // --- Summary cards ---
+      const r = data.routes || {};
+
+      const n = data.notifications || {};
+      document.getElementById('rbs-notifs').textContent   = n.total ?? '--';
+
+      const l = data.log || {};
+      const warnEl = document.getElementById('rbs-warnings');
+      const errEl  = document.getElementById('rbs-errors');
+      warnEl.textContent = l.recent_warnings ?? '--';
+      errEl.textContent  = l.recent_errors   ?? '--';
+      warnEl.closest('.rally-stat-card').classList.toggle('rbs-active-warn', (l.recent_warnings || 0) > 0);
+      errEl.closest('.rally-stat-card').classList.toggle('rbs-active-err',  (l.recent_errors  || 0) > 0);
+
+      // Store filtered lines for detail modal
+      rbsWarnLines = l.warning_lines || [];
+      rbsErrLines  = l.error_lines   || [];
+
+      // --- Data overview ---
+      document.getElementById('rbs-freshness').textContent = r.data_freshness ?? '--';
+      document.getElementById('rbs-earliest').textContent  = r.earliest_date  ?? '--';
+      document.getElementById('rbs-latest').textContent    = r.latest_date    ?? '--';
+      document.getElementById('rbs-logsize').textContent   = l.file_size_mb != null ? `${l.file_size_mb} MB` : '--';
+      document.getElementById('rbs-lastlog').textContent   = l.last_entry ?? '--';
+      const f = data.favorites || {};
+      document.getElementById('rbs-favs').textContent = f.total ?? '--';
+
+      // --- Model breakdown table ---
+      const modelsEl = document.getElementById('rbs-models');
+      const models = r.model_breakdown || [];
+      if (models.length) {
+        const maxCount = models[0].count;
+        modelsEl.innerHTML = models.map(m => `
+          <div class="rbs-row">
+            <span class="rbs-row-label">${m.model}</span>
+            <div class="rbs-bar-wrap">
+              <div class="rbs-bar" style="width:${Math.round(m.count/maxCount*100)}%"></div>
+            </div>
+            <span class="rbs-row-val">${m.count}</span>
+          </div>`).join('');
+      } else {
+        modelsEl.innerHTML = '<div class="loading-message">No data</div>';
+      }
+
+      // --- Top origins table ---
+      const originsEl = document.getElementById('rbs-top-origins');
+      const tops = r.top_origins || [];
+      if (tops.length) {
+        const maxC = tops[0].count;
+        originsEl.innerHTML = tops.map(o => `
+          <div class="rbs-row">
+            <span class="rbs-row-label">${o.origin}</span>
+            <div class="rbs-bar-wrap">
+              <div class="rbs-bar rbs-bar-alt" style="width:${Math.round(o.count/maxC*100)}%"></div>
+            </div>
+            <span class="rbs-row-val">${o.count}</span>
+          </div>`).join('');
+      } else {
+        originsEl.innerHTML = '<div class="loading-message">No data</div>';
+      }
+
+      // --- Log tail ---
+      const logEl = document.getElementById('rbs-log');
+      const lines = l.recent_lines || [];
+      if (lines.length) {
+        logEl.innerHTML = lines.map(line => {
+          let cls = '';
+          if (line.includes(' - ERROR - '))   cls = 'rbs-log-err';
+          else if (line.includes(' - WARNING - ')) cls = 'rbs-log-warn';
+          else if (line.includes(' - INFO - '))    cls = 'rbs-log-info';
+          return `<div class="rbs-log-line ${cls}">${escHtml(line)}</div>`;
+        }).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+      } else {
+        logEl.innerHTML = '<div class="loading-message">No recent log entries</div>';
+      }
+    })
+    .catch(err => {
+      document.getElementById('rbs-log').innerHTML =
+        `<div class="loading-message">Failed to load stats</div>`;
+    });
 }
 
-function termExec(cmd) {
-  termAppendCmd(cmd);
-  const input = document.getElementById('term-input');
-  input.disabled = true;
-
-  fetch('/api/terminal/exec', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({token: termToken, command: cmd})
-  })
-  .then(r => {
-    if (r.status === 401) { termToken = null; sessionStorage.removeItem('termToken'); termAutoLogin(); throw new Error('session_expired'); }
-    return r.json();
-  })
-  .then(data => {
-    if (data.output) termAppend(data.output, 'out');
-    if (data.cwd) termSetCwd(data.cwd);
-    input.disabled = false;
-    input.focus();
-  })
-  .catch(err => {
-    if (String(err.message) !== 'session_expired') termAppend('Error: request failed', 'err');
-    input.disabled = false;
-  });
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function termKeydown(e) {
-  const input = document.getElementById('term-input');
+function rbsShowDetail(type) {
+  const lines  = type === 'warn' ? rbsWarnLines : rbsErrLines;
+  const title  = type === 'warn' ? '⚠️ Recent Warnings' : '🔴 Recent Errors';
+  const cls    = type === 'warn' ? 'rbs-log-warn' : 'rbs-log-err';
 
-  if (e.key === 'Enter') {
-    const cmd = input.value.trim();
-    if (!cmd) return;
-    // Push to history (avoid duplicate consecutive)
-    if (termHistory[termHistory.length - 1] !== cmd) termHistory.push(cmd);
-    if (termHistory.length > 200) termHistory.shift();
-    termHistIdx = -1;
-    termPendingSave = '';
-    input.value = '';
-    if (cmd === 'clear') {
-      document.getElementById('term-body').innerHTML = '';
-      return;
-    }
-    termExec(cmd);
+  document.getElementById('rbs-detail-title').textContent = title;
 
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (termHistory.length === 0) return;
-    if (termHistIdx === -1) {
-      termPendingSave = input.value;
-      termHistIdx = termHistory.length - 1;
-    } else if (termHistIdx > 0) {
-      termHistIdx--;
-    }
-    input.value = termHistory[termHistIdx];
-    // Move cursor to end
-    setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (termHistIdx === -1) return;
-    termHistIdx++;
-    if (termHistIdx >= termHistory.length) {
-      termHistIdx = -1;
-      input.value = termPendingSave;
-    } else {
-      input.value = termHistory[termHistIdx];
-    }
-    setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-
-  } else if (e.key === 'l' && e.ctrlKey) {
-    e.preventDefault();
-    document.getElementById('term-body').innerHTML = '';
+  const body = document.getElementById('rbs-detail-body');
+  if (!lines.length) {
+    body.innerHTML = '<div class="loading-message" style="padding:20px 0">No entries found in recent log.</div>';
+  } else {
+    body.innerHTML = lines.map(l => `<div class="rbs-log-line ${cls}">${escHtml(l)}</div>`).join('');
+    setTimeout(() => { body.scrollTop = body.scrollHeight; }, 0);
   }
+
+  const overlay = document.getElementById('rbs-detail-overlay');
+  overlay.classList.add('open');
+}
+
+function rbsCloseDetail(e) {
+  if (e && e.target !== document.getElementById('rbs-detail-overlay')) return;
+  document.getElementById('rbs-detail-overlay').classList.remove('open');
 }
 
 // ---- Rally Bot Functions ----
@@ -1546,6 +1434,11 @@ document.addEventListener('keydown', (e) => {
   const adminOverlay = document.getElementById('admin-modal-overlay');
   if (adminOverlay && adminOverlay.classList.contains('open')) {
     if (e.key === 'Escape') { e.preventDefault(); closeAdminModal(); }
+  }
+  // RBS detail modal shortcut
+  const rbsOverlay = document.getElementById('rbs-detail-overlay');
+  if (rbsOverlay && rbsOverlay.classList.contains('open')) {
+    if (e.key === 'Escape') { e.preventDefault(); rbsOverlay.classList.remove('open'); }
   }
 });
 
