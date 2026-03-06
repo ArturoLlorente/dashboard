@@ -903,7 +903,7 @@ function buildRallyFilterOptions() {
     origins.add(route.origin);
     (route.returns || []).forEach(ret => {
       dests.add(ret.destination);
-      if (ret.model_name) models.add(ret.model_name.toLowerCase());
+      if (ret.model_name && ret.model_name.toLowerCase() !== 'unknown') models.add(ret.model_name.toLowerCase());
     });
   });
 
@@ -1078,6 +1078,7 @@ function applyRallyFilters() {
     if (selOrigins.size && !selOrigins.has(route.origin)) return;
 
     const returns = (route.returns || []).reduce((acc, ret) => {
+      if ((ret.model_name || '').toLowerCase() === 'unknown') return acc;
       if (selDests.size  && !selDests.has(ret.destination))  return acc;
       if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase()))  return acc;
 
@@ -1212,8 +1213,9 @@ function displayRallyRoutes(routes) {
         grouped.set(key, { origin: route.origin, destination: ret.destination, rows: [] });
       }
       const model = (ret.model_name || '').toLowerCase();
+      const image = ret.model_image || '';
       ret.available_dates.forEach(dateRange => {
-        grouped.get(key).rows.push({ model, dateRange, url: ret.roadsurfer_url });
+        grouped.get(key).rows.push({ model, image, dateRange, url: ret.roadsurfer_url });
       });
     });
   });
@@ -1227,8 +1229,9 @@ function displayRallyRoutes(routes) {
     })
     .sort((a, b) => parseDMY(a.rows[0].dateRange.startDate) - parseDMY(b.rows[0].dateRange.startDate))
     .forEach(({ origin, destination, rows }) => {
-    const dateRows = rows.map(({ model, dateRange, url }) => `
+    const dateRows = rows.map(({ model, image, dateRange, url }) => `
       <div class="rc-date-row">
+        ${image ? `<img class="rc-van-img" src="/api/rally-bot/assets/${image}" alt="${model}" title="${model}" loading="lazy">` : ''}
         ${model ? `<span class="rc-model">${model}</span>` : ''}
         <span class="rc-dates">${dateRange.startDate}<span class="rc-datesep">→</span>${dateRange.endDate}</span>
         <a href="${url}" target="_blank" class="rc-book">Book →</a>

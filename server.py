@@ -715,6 +715,14 @@ def delete_todo(todo_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/rally-bot/assets/<path:filename>')
+def rally_bot_asset(filename):
+    """Serve van images from rally_bot/assets/"""
+    from flask import send_from_directory
+    assets_dir = Path(__file__).parent.parent / 'rally_bot' / 'assets'
+    return send_from_directory(str(assets_dir), filename)
+
+
 @app.route('/api/rally-bot/routes')
 def rally_bot_routes():
     """Get rally bot station routes with optional filtering"""

@@ -679,6 +679,16 @@ input[type="range"]::-moz-range-thumb{
   box-shadow:0 4px 12px rgba(56,189,248,.15)
 }
 
+.rc-van-img{
+  width:48px;
+  height:34px;
+  object-fit:cover;
+  border-radius:6px;
+  border:1px solid rgba(148,163,184,.18);
+  flex-shrink:0;
+  background:rgba(148,163,184,.08);
+}
+
 .loading-message{
   text-align:center;padding:40px;
   color:var(--muted);font-size:14px
