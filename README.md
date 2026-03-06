@@ -21,8 +21,37 @@ dashboard/
 ## Quick Start
 
 ```bash
-# Or run directly
-uv run server.py
+# Run directly (development)
+uv run python server.py
+```
+
+## Running as a Service
+
+The dashboard runs as a **systemd system service** (`dashboard.service`), which means:
+
+- Starts automatically on every boot
+- Restarts automatically if it crashes (`Restart=always`, 10s delay)
+- Runs detached from any terminal — SSH disconnects have no effect
+- Runs as the `allorana` user on port **6969**
+
+Service file: `/etc/systemd/system/dashboard.service`
+
+```ini
+[Service]
+User=allorana
+WorkingDirectory=/home/allorana/repos/dashboard
+ExecStart=/home/allorana/.local/bin/uv run python server.py
+Restart=always
+RestartSec=10
+```
+
+### Useful commands
+
+```bash
+systemctl status dashboard        # check status & recent logs
+systemctl restart dashboard       # restart the server
+systemctl stop dashboard          # stop (won't auto-restart until started again)
+journalctl -u dashboard -f        # follow live logs
 ```
 
 ## Features
