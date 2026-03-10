@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 import subprocess
 import os
 import requests
@@ -12,6 +12,10 @@ import time
 import glob
 import secrets
 import argparse
+import shutil
+import mimetypes
+import shutil
+import mimetypes
 
 app = Flask(__name__)
 
@@ -968,6 +972,172 @@ def background_metrics_collector():
             print(f"Error in background collector: {e}")
             time.sleep(5)
 
+# ---- Rally Bot geocoding endpoints ----
+_GEOCODE_CACHE_FILE = Path(__file__).parent.parent / 'rally_bot' / 'geocode_cache.json'
+
+@app.route('/api/rally-bot/geocodes')
+def rally_bot_geocodes():
+    """Return the full geocode cache (city → [lat, lng])."""
+    if not _GEOCODE_CACHE_FILE.exists():
+        return jsonify({})
+    with open(_GEOCODE_CACHE_FILE, 'r') as f:
+        return jsonify(json.load(f))
+
+@app.route('/api/rally-bot/geocode')
+def rally_bot_geocode_city():
+    """Geocode a single city name via Nominatim, cache and return [lat, lng]."""
+    city = request.args.get('city', '').strip()
+    if not city:
+        return jsonify({'error': 'city required'}), 400
+
+    # Load existing cache
+    cache = {}
+    if _GEOCODE_CACHE_FILE.exists():
+        with open(_GEOCODE_CACHE_FILE, 'r') as f:
+            cache = json.load(f)
+
+    if city in cache:
+        return jsonify({'coords': cache[city], 'cached': True})
+
+    # Query Nominatim
+    try:
+        resp = requests.get(
+            'https://nominatim.openstreetmap.org/search',
+            params={'q': city, 'format': 'json', 'limit': 1},
+            headers={'User-Agent': 'rally-dashboard/1.0'},
+            timeout=8,
+        )
+        results = resp.json()
+        if results:
+            coords = [float(results[0]['lat']), float(results[0]['lon'])]
+            cache[city] = coords
+            with open(_GEOCODE_CACHE_FILE, 'w') as f:
+                json.dump(cache, f, indent=2)
+            return jsonify({'coords': coords, 'cached': False})
+        return jsonify({'error': 'City not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ---- File Storage endpoints ----
+STORAGE_ROOT = Path(__file__).parent / 'storage'
+STORAGE_ROOT.mkdir(exist_ok=True)
+
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico'}
+
+
+def _resolve_storage_path(rel: str) -> Path:
+    """Resolve a relative path inside STORAGE_ROOT, preventing path traversal."""
+    safe = STORAGE_ROOT.resolve()
+    target = (safe / rel.lstrip('/')).resolve()
+    if not str(target).startswith(str(safe)):
+        raise ValueError('Path traversal attempt')
+    return target
+
+
+@app.route('/api/storage/list')
+def storage_list():
+    """List contents of a directory inside storage."""
+    rel = request.args.get('path', '')
+    try:
+        folder = _resolve_storage_path(rel)
+        if not folder.exists() or not folder.is_dir():
+            return jsonify({'success': False, 'error': 'Not a directory'}), 400
+        items = []
+        for item in sorted(folder.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+            stat = item.stat()
+            entry = {
+                'name': item.name,
+                'type': 'file' if item.is_file() else 'dir',
+                'size': stat.st_size if item.is_file() else None,
+                'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M'),
+                'is_image': item.suffix.lower() in IMAGE_EXTS,
+                'path': str(item.relative_to(STORAGE_ROOT)),
+            }
+            items.append(entry)
+        return jsonify({'success': True, 'items': items, 'path': rel or '/'})
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/storage/mkdir', methods=['POST'])
+def storage_mkdir():
+    """Create a new folder."""
+    data = request.get_json() or {}
+    rel = data.get('path', '')
+    try:
+        folder = _resolve_storage_path(rel)
+        folder.mkdir(parents=True, exist_ok=False)
+        return jsonify({'success': True})
+    except FileExistsError:
+        return jsonify({'success': False, 'error': 'Folder already exists'}), 409
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/storage/upload', methods=['POST'])
+def storage_upload():
+    """Upload one or more files to a target directory."""
+    rel = request.form.get('path', '')
+    try:
+        folder = _resolve_storage_path(rel)
+        folder.mkdir(parents=True, exist_ok=True)
+        saved = []
+        for f in request.files.getlist('files'):
+            filename = Path(f.filename).name  # strip any directory components
+            if not filename:
+                continue
+            dest = folder / filename
+            # avoid overwriting: append a counter if needed
+            counter = 1
+            stem, suffix = dest.stem, dest.suffix
+            while dest.exists():
+                dest = folder / f'{stem}_{counter}{suffix}'
+                counter += 1
+            f.save(str(dest))
+            saved.append(dest.name)
+        return jsonify({'success': True, 'saved': saved})
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/storage/delete', methods=['POST'])
+def storage_delete():
+    """Delete a file or folder (recursively)."""
+    data = request.get_json() or {}
+    rel = data.get('path', '')
+    try:
+        target = _resolve_storage_path(rel)
+        if not target.exists():
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+        return jsonify({'success': True})
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/storage/file/<path:rel>')
+def storage_file(rel):
+    """Serve a file from storage (for preview / download)."""
+    try:
+        target = _resolve_storage_path(rel)
+        if not target.is_file():
+            return jsonify({'error': 'Not found'}), 404
+        return send_from_directory(str(target.parent), target.name)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+
 def main():
     """Main entry point for the application"""
     # Load persisted data on startup
@@ -982,8 +1152,12 @@ def main():
     parser.add_argument('--port', type=int, default=6969, help='Port to listen on (default: 6969)')
     args = parser.parse_args()
 
-    print(f"Starting server on port {args.port}...")
-    app.run(host='0.0.0.0', port=args.port, debug=False)
+    cert = Path(__file__).parent / 'certs' / 'cert.pem'
+    key  = Path(__file__).parent / 'certs' / 'key.pem'
+    ssl_ctx = (str(cert), str(key)) if cert.exists() and key.exists() else None
+
+    print(f"Starting server on port {args.port} ({'HTTPS' if ssl_ctx else 'HTTP'})...")
+    app.run(host='0.0.0.0', port=args.port, debug=False, ssl_context=ssl_ctx)
 
 if __name__ == '__main__':
     main()

@@ -3,3 +3,5 @@ uv.lock
 .venv/
 __pycache__/
 battery_history.json
+storage/
+todos.json

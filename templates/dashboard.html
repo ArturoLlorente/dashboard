@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Server Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 
 <body>
@@ -22,6 +24,23 @@
       </div>
 
       <div class="top-right">
+        <div class="qs-chip">
+          <span class="qs-icon">🖥️</span>
+          <div><div class="qs-lbl">CPU</div><div class="qs-val" id="quick-cpu">--%</div></div>
+        </div>
+        <div class="qs-chip">
+          <span class="qs-icon">💾</span>
+          <div><div class="qs-lbl">RAM</div><div class="qs-val" id="quick-mem">--%</div></div>
+        </div>
+        <div class="qs-chip">
+          <span class="qs-icon">🌡️</span>
+          <div><div class="qs-lbl">Temp</div><div class="qs-val" id="quick-temp">--°C</div></div>
+        </div>
+        <div class="qs-chip">
+          <span class="qs-icon">💿</span>
+          <div><div class="qs-lbl">Disk</div><div class="qs-val" id="quick-disk">--%</div></div>
+        </div>
+
         <div class="battery-hero" title="Battery status">
           <div class="battery-left">
             <div class="battery-big">
@@ -36,40 +55,7 @@
 
         <div class="chip">
           <span class="dot" id="status-dot"></span>
-          <span>Last update:</span>
           <span id="last-update">Never</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Quick Stats Bar (always visible) -->
-    <div class="quick-stats">
-      <div class="quick-stat">
-        <div class="quick-stat-icon">🖥️</div>
-        <div class="quick-stat-content">
-          <div class="quick-stat-label">CPU</div>
-          <div class="quick-stat-value" id="quick-cpu">--%</div>
-        </div>
-      </div>
-      <div class="quick-stat">
-        <div class="quick-stat-icon">💾</div>
-        <div class="quick-stat-content">
-          <div class="quick-stat-label">Memory</div>
-          <div class="quick-stat-value" id="quick-mem">--%</div>
-        </div>
-      </div>
-      <div class="quick-stat">
-        <div class="quick-stat-icon">🌡️</div>
-        <div class="quick-stat-content">
-          <div class="quick-stat-label">Temp</div>
-          <div class="quick-stat-value" id="quick-temp">--°C</div>
-        </div>
-      </div>
-      <div class="quick-stat">
-        <div class="quick-stat-icon">💿</div>
-        <div class="quick-stat-content">
-          <div class="quick-stat-label">Disk</div>
-          <div class="quick-stat-value" id="quick-disk">--%</div>
         </div>
       </div>
     </div>
@@ -82,6 +68,10 @@
         <div class="nav-item active" data-window="rally" onclick="switchWindow('rally')">
           <span class="nav-icon">🚐</span>
           <span>Rally Bot</span>
+        </div>
+        <div class="nav-item" data-window="map" onclick="switchWindow('map')">
+          <span class="nav-icon">🗺️</span>
+          <span>Map</span>
         </div>
         <!-- Admin-only nav items (hidden until unlocked) -->
         <div class="nav-admin-divider" id="nav-admin-divider">Admin</div>
@@ -100,6 +90,10 @@
         <div class="nav-item nav-admin-item" data-window="todo" onclick="switchWindow('todo')">
           <span class="nav-icon">✅</span>
           <span>To-Do</span>
+        </div>
+        <div class="nav-item nav-admin-item" data-window="files" onclick="switchWindow('files')">
+          <span class="nav-icon">📁</span>
+          <span>Files</span>
         </div>
       </div>
 
@@ -201,8 +195,14 @@
         <!-- Rally Bot Window -->
         <div class="window active" id="window-rally">
           <div class="section">
-            <div class="section-title">Rally Bot - Station Routes</div>
-            
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="section-title" style="margin-bottom:0">Rally Bot</div>
+              <div class="view-toggle">
+                <button class="view-btn active" id="btn-view-list" onclick="setRallyView('list')">☰ List</button>
+                <button class="view-btn" id="btn-view-map" onclick="setRallyView('map')">🗺️ Map</button>
+              </div>
+            </div>
+
             <!-- Filters -->
             <div class="rally-filters">
               <div class="filter-group">
@@ -271,13 +271,22 @@
                   </div>
                 </div>
               </div>
+              <div class="filter-group filter-group-btn" style="flex-direction:column;align-items:flex-start;gap:6px;justify-content:center">
+                <label class="map-exclude-toggle">
+                  <input type="checkbox" id="rally-excl-america" onchange="onFilterChange()">
+                  <span>Exclude Americas</span>
+                </label>
+                <label class="map-exclude-toggle">
+                  <input type="checkbox" id="rally-excl-europe" onchange="onFilterChange()">
+                  <span>Exclude Europe</span>
+                </label>
+              </div>
               <div class="filter-group filter-group-btn">
                 <button class="btn" onclick="clearRallyFilters()">Clear All</button>
               </div>
-            </div>
+            </div><!-- end .rally-filters -->
 
-            <!-- Stats -->
-            <div class="rally-stats">
+            <div class="rally-stats" id="rally-list-stats">
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="rally-total-routes">--</div>
                 <div class="rally-stat-label">Total Routes</div>
@@ -288,12 +297,28 @@
               </div>
             </div>
 
-            <!-- Routes List -->
+            <!-- Map stats bar (shown in map view) -->
+            <div class="rally-stats" id="rally-map-stats" style="display:none;margin-bottom:10px">
+              <div class="rally-stat-card">
+                <div class="rally-stat-value" id="map-route-count">--</div>
+                <div class="rally-stat-label">Visible Routes</div>
+              </div>
+              <div class="rally-stat-card">
+                <div class="rally-stat-value" id="map-missing-count">--</div>
+                <div class="rally-stat-label">Unknown Locations</div>
+              </div>
+            </div>
+
+            <!-- List view -->
             <div id="rally-routes-container" class="rally-routes">
               <div class="loading-message">Loading routes...</div>
             </div>
+
+            <!-- Map view (shown in map view) -->
+            <div id="map-container" style="display:none"></div>
           </div>
         </div>
+
         <!-- Rally Bot Stats Window (admin-only) -->
         <div class="window" id="window-rally-stats">
           <div class="section">
@@ -386,6 +411,30 @@
               <span class="todo-archive-chevron" id="todo-archive-chevron">▾</span>
             </div>
             <div id="todo-archive-list" style="display:none;"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+        <!-- File Storage Window -->
+        <div class="window" id="window-files">
+          <div class="section">
+            <div class="section-title">File Storage</div>
+            <div class="files-toolbar">
+              <div class="files-breadcrumb" id="files-breadcrumb"></div>
+              <div style="display:flex;gap:8px;flex-shrink:0">
+                <button class="btn" onclick="filesPromptFolder()">+ Folder</button>
+                <label class="btn" style="cursor:pointer;margin:0;display:inline-flex;align-items:center">
+                  ⬆ Upload
+                  <input type="file" id="files-upload-input" multiple style="display:none" onchange="filesHandleInput(this)">
+                </label>
+              </div>
+            </div>
+            <div class="files-drop-zone" id="files-drop-zone">
+              <span>Drop files here to upload, or use the Upload button</span>
+            </div>
+            <div class="files-grid" id="files-grid"></div>
           </div>
         </div>
 

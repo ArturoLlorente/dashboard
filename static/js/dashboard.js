@@ -35,16 +35,54 @@ function updateQuickStats() {
 }
 
 // Admin-only windows (require admin authentication)
-const ADMIN_WINDOWS = new Set(['metrics', 'controls', 'todo', 'rally-stats']);
+const ADMIN_WINDOWS = new Set(['metrics', 'controls', 'todo', 'rally-stats', 'files']);
 let isAdmin = false;
 let adminToken = sessionStorage.getItem('adminToken') || null;
 
 // ---- window switching ----
 let currentWindow = 'rally';
+let currentRallyView = 'list';
+
+function onFilterChange() {
+  applyRallyFilters();
+  if (currentRallyView === 'map' && mapInstance) applyMapFilters();
+}
+
+function setRallyView(view) {
+  currentRallyView = view;
+  const listBtn   = document.getElementById('btn-view-list');
+  const mapBtn    = document.getElementById('btn-view-map');
+  const routesCon = document.getElementById('rally-routes-container');
+  const mapCon    = document.getElementById('map-container');
+  const listSts   = document.getElementById('rally-list-stats');
+  const mapSts    = document.getElementById('rally-map-stats');
+
+  if (view === 'map') {
+    if (listBtn) listBtn.classList.remove('active');
+    if (mapBtn)  mapBtn.classList.add('active');
+    if (routesCon) routesCon.style.display = 'none';
+    if (listSts)   listSts.style.display   = 'none';
+    if (mapSts)    mapSts.style.display    = '';
+    if (mapCon)    mapCon.style.display    = '';
+    // Let the browser paint the visible container before Leaflet reads its size
+    requestAnimationFrame(() => { loadMapWindow(); });
+  } else {
+    if (listBtn) listBtn.classList.add('active');
+    if (mapBtn)  mapBtn.classList.remove('active');
+    if (routesCon) routesCon.style.display = '';
+    if (listSts)   listSts.style.display   = '';
+    if (mapSts)    mapSts.style.display    = 'none';
+    if (mapCon)    mapCon.style.display    = 'none';
+    loadRallyBotData();
+  }
+}
 
 function switchWindow(windowName) {
   // Guard: admin-only windows are not accessible without authentication
   if (ADMIN_WINDOWS.has(windowName) && !isAdmin) return;
+
+  // Map view is a subview inside window-rally (not a separate window)
+  const actualWindow = windowName === 'map' ? 'rally' : windowName;
 
   // Hide all windows
   document.querySelectorAll('.window').forEach(w => w.classList.remove('active'));
@@ -52,16 +90,18 @@ function switchWindow(windowName) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
   // Show selected window
-  document.getElementById('window-' + windowName).classList.add('active');
+  document.getElementById('window-' + actualWindow).classList.add('active');
   // Activate corresponding nav item via data-window attribute
   const navEl = document.querySelector(`.nav-item[data-window="${windowName}"]`);
   if (navEl) navEl.classList.add('active');
-  
+
   currentWindow = windowName;
 
   // Load window-specific data
   if (windowName === 'rally') {
-    loadRallyBotData();
+    setRallyView('list');
+  } else if (windowName === 'map') {
+    setRallyView('map');
   } else if (windowName === 'rally-stats') {
     loadRallyStats();
   } else if (windowName === 'metrics') {
@@ -70,6 +110,8 @@ function switchWindow(windowName) {
     updateDashboard();
   } else if (windowName === 'todo') {
     loadTodos();
+  } else if (windowName === 'files') {
+    loadFiles(filesCurrentPath);
   }
 
 }
@@ -795,9 +837,9 @@ function buildRallyFilterOptions() {
     });
   });
 
-  buildMultiSelect('ms-origin-options', [...origins].sort(),  new Set());
-  buildMultiSelect('ms-dest-options',   [...dests].sort(),    new Set());
-  buildMultiSelect('ms-model-options',  [...models].sort(),   new Set());
+  buildMultiSelect('ms-origin-options', [...origins].sort(),  new Set(), onFilterChange);
+  buildMultiSelect('ms-dest-options',   [...dests].sort(),    new Set(), onFilterChange);
+  buildMultiSelect('ms-model-options',  [...models].sort(),   new Set(), onFilterChange);
 }
 
 // Filter client-side from the full cache
@@ -935,7 +977,7 @@ function calApply(event) {
   }
 
   document.getElementById('cal-wrapper').classList.remove('open');
-  applyRallyFilters();
+  onFilterChange();
 }
 
 function calClear(event) {
@@ -958,6 +1000,18 @@ function applyRallyFilters() {
   const selModels  = new Set(getMsSelected('ms-model-options'));
   const filterStart = calApplied.start;
   const filterEnd   = calApplied.end;
+  const exclAmerica = document.getElementById('rally-excl-america').checked;
+  const exclEurope  = document.getElementById('rally-excl-europe').checked;
+  const isAmericas  = coords => coords[1] < -30;
+  const isEurope    = coords => coords[0] >= 35 && coords[0] <= 72 && coords[1] >= -15 && coords[1] <= 45;
+
+  // If continent exclusion is active but geocodes aren't loaded yet, load them first
+  if ((exclAmerica || exclEurope) && !mapGeocodesLoaded) {
+    fetch('/api/rally-bot/geocodes').then(r => r.json()).then(data => {
+      mapGeocodes = data; mapGeocodesLoaded = true; applyRallyFilters();
+    });
+    return;
+  }
 
   let totalReturns = 0;
   const filtered = [];
@@ -965,10 +1019,28 @@ function applyRallyFilters() {
   rallyAllRoutes.forEach(route => {
     if (selOrigins.size && !selOrigins.has(route.origin)) return;
 
+    // Continent exclusion on origin
+    if (exclAmerica || exclEurope) {
+      const oc = mapGeocodes[route.origin];
+      if (oc) {
+        if (exclAmerica && isAmericas(oc)) return;
+        if (exclEurope  && isEurope(oc))   return;
+      }
+    }
+
     const returns = (route.returns || []).reduce((acc, ret) => {
       if ((ret.model_name || '').toLowerCase() === 'unknown') return acc;
       if (selDests.size  && !selDests.has(ret.destination))  return acc;
       if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase()))  return acc;
+
+      // Continent exclusion on destination
+      if (exclAmerica || exclEurope) {
+        const dc = mapGeocodes[ret.destination];
+        if (dc) {
+          if (exclAmerica && isAmericas(dc)) return acc;
+          if (exclEurope  && isEurope(dc))   return acc;
+        }
+      }
 
       // Date filter: keep only date ranges that overlap the selected window
       let dates = ret.available_dates || [];
@@ -1001,9 +1073,10 @@ function applyRallyFilters() {
 // alias used by date inputs
 function updateRallyRoutes() { applyRallyFilters(); }
 
-function buildMultiSelect(optionsId, items, currentSelected) {
+function buildMultiSelect(optionsId, items, currentSelected, onChangeFn) {
   const container = document.getElementById(optionsId);
   if (!container) return;
+  const changeHandler = typeof onChangeFn === 'function' ? onChangeFn : applyRallyFilters;
   container.innerHTML = '';
   items.forEach(item => {
     const label = document.createElement('label');
@@ -1016,7 +1089,7 @@ function buildMultiSelect(optionsId, items, currentSelected) {
     cb.addEventListener('change', () => {
       label.classList.toggle('checked', cb.checked);
       updateMsTriggerLabel(container.closest('.ms-wrapper'));
-      applyRallyFilters();
+      changeHandler();
     });
 
     label.appendChild(cb);
@@ -1081,7 +1154,9 @@ function clearRallyFilters() {
     updateMsTriggerLabel(cont.closest('.ms-wrapper'));
   });
   calReset();
-  applyRallyFilters();
+  document.getElementById('rally-excl-america').checked = false;
+  document.getElementById('rally-excl-europe').checked  = false;
+  onFilterChange();
 }
 
 function displayRallyRoutes(routes) {
@@ -1463,4 +1538,545 @@ if (adminToken) {
     }
   })
   .catch(() => { applyAdminState(false); });
+}
+
+// ---- File Storage ----
+let filesCurrentPath = '';
+let filesDndReady = false;
+
+function loadFiles(path) {
+  filesCurrentPath = (path == null || path === undefined) ? '' : path;
+  filesSetupDnd();
+  renderFilesBreadcrumb(filesCurrentPath);
+  const grid = document.getElementById('files-grid');
+  grid.innerHTML = '<div class="loading-message">Loading…</div>';
+  fetch('/api/storage/list?path=' + encodeURIComponent(filesCurrentPath))
+    .then(r => r.json())
+    .then(data => {
+      grid.innerHTML = '';
+      if (!data.success) {
+        const err = document.createElement('div');
+        err.className = 'loading-message';
+        err.textContent = 'Error: ' + data.error;
+        grid.appendChild(err);
+        return;
+      }
+      // Back button when not at root
+      if (filesCurrentPath) {
+        const up = filesCurrentPath.lastIndexOf('/');
+        const parentPath = up > 0 ? filesCurrentPath.substring(0, up) : '';
+        const back = document.createElement('div');
+        back.className = 'file-card file-card-dir';
+        back.innerHTML = '<div class="file-card-icon">📂</div><div class="file-card-name">..</div>';
+        back.addEventListener('click', () => loadFiles(parentPath));
+        grid.appendChild(back);
+      }
+      if (!data.items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'loading-message';
+        empty.textContent = filesCurrentPath ? 'This folder is empty' : 'No files yet — upload something!';
+        grid.appendChild(empty);
+        return;
+      }
+      data.items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'file-card' + (item.type === 'dir' ? ' file-card-dir' : '');
+
+        if (item.is_image) {
+          const img = document.createElement('img');
+          img.className = 'file-card-img';
+          img.loading = 'lazy';
+          img.alt = item.name;
+          img.src = '/api/storage/file/' + item.path.split('/').map(encodeURIComponent).join('/');
+          card.appendChild(img);
+        } else {
+          const icon = document.createElement('div');
+          icon.className = 'file-card-icon';
+          icon.textContent = item.type === 'dir' ? '📁' : filesIcon(item.name);
+          card.appendChild(icon);
+        }
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'file-card-name';
+        nameEl.textContent = item.name;
+        nameEl.title = item.name;
+        card.appendChild(nameEl);
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'file-card-meta';
+        metaEl.textContent = item.type === 'file'
+          ? (filesFormatBytes(item.size) + ' · ' + item.modified)
+          : item.modified;
+        card.appendChild(metaEl);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'file-delete-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete';
+        delBtn.addEventListener('click', e => { e.stopPropagation(); filesDelete(item.path); });
+        card.appendChild(delBtn);
+
+        if (item.type === 'dir') {
+          card.addEventListener('click', () => loadFiles(item.path));
+        } else {
+          card.addEventListener('click', () => {
+            window.open('/api/storage/file/' + item.path.split('/').map(encodeURIComponent).join('/'), '_blank');
+          });
+        }
+        grid.appendChild(card);
+      });
+    })
+    .catch(() => {
+      grid.innerHTML = '<div class="loading-message">Failed to load files</div>';
+    });
+}
+
+function renderFilesBreadcrumb(path) {
+  const bc = document.getElementById('files-breadcrumb');
+  if (!path) {
+    bc.innerHTML = '<span class="files-crumb files-crumb-active">root</span>';
+    return;
+  }
+  const parts = path.split('/').filter(Boolean);
+  const rootSpan = document.createElement('span');
+  rootSpan.className = 'files-crumb';
+  rootSpan.textContent = 'root';
+  rootSpan.addEventListener('click', () => loadFiles(''));
+  bc.innerHTML = '';
+  bc.appendChild(rootSpan);
+  let accumulated = '';
+  parts.forEach((part, i) => {
+    accumulated += (accumulated ? '/' : '') + part;
+    const sep = document.createElement('span');
+    sep.className = 'files-crumb-sep';
+    sep.textContent = ' / ';
+    bc.appendChild(sep);
+    const crumb = document.createElement('span');
+    const cap = accumulated;
+    if (i === parts.length - 1) {
+      crumb.className = 'files-crumb files-crumb-active';
+      crumb.textContent = part;
+    } else {
+      crumb.className = 'files-crumb';
+      crumb.textContent = part;
+      crumb.addEventListener('click', () => loadFiles(cap));
+    }
+    bc.appendChild(crumb);
+  });
+}
+
+function filesPromptFolder() {
+  const name = (prompt('New folder name:') || '').trim();
+  if (!name) return;
+  if (name.includes('/') || name.includes('\\') || name === '..') {
+    alert('Invalid folder name');
+    return;
+  }
+  const rel = filesCurrentPath ? filesCurrentPath + '/' + name : name;
+  fetch('/api/storage/mkdir', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: rel })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) loadFiles(filesCurrentPath);
+      else alert('Error: ' + data.error);
+    });
+}
+
+function filesHandleInput(input) {
+  if (!input.files.length) return;
+  filesUpload(input.files);
+  input.value = '';
+}
+
+function filesUpload(fileList) {
+  const formData = new FormData();
+  for (const f of fileList) formData.append('files', f);
+  formData.append('path', filesCurrentPath);
+  const zone = document.getElementById('files-drop-zone');
+  zone.innerHTML = '<span>Uploading ' + fileList.length + ' file(s)…</span>';
+  fetch('/api/storage/upload', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      zone.innerHTML = '<span>Drop files here to upload, or use the Upload button</span>';
+      if (data.success) loadFiles(filesCurrentPath);
+      else alert('Upload error: ' + data.error);
+    })
+    .catch(() => {
+      zone.innerHTML = '<span>Drop files here to upload, or use the Upload button</span>';
+      alert('Upload failed');
+    });
+}
+
+function filesDelete(path) {
+  const name = path.split('/').pop();
+  if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+  fetch('/api/storage/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: path })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) loadFiles(filesCurrentPath);
+      else alert('Error: ' + data.error);
+    });
+}
+
+function filesIcon(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const map = {
+    pdf:'📄', zip:'🗜️', gz:'🗜️', tar:'🗜️', '7z':'🗜️',
+    mp4:'🎬', mov:'🎬', avi:'🎬', mkv:'🎬',
+    mp3:'🎵', flac:'🎵', wav:'🎵', ogg:'🎵',
+    py:'🐍', js:'📜', ts:'📜', html:'🌐', css:'🎨',
+    json:'{}', xml:'📋', yaml:'📋', yml:'📋',
+    txt:'📃', md:'📝', sh:'💻', bash:'💻', sql:'🗃️',
+    doc:'📑', docx:'📑', xls:'📊', xlsx:'📊', csv:'📊',
+  };
+  return map[ext] || '📄';
+}
+
+function filesFormatBytes(b) {
+  if (b == null) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+function filesSetupDnd() {
+  if (filesDndReady) return;
+  const zone = document.getElementById('files-drop-zone');
+  if (!zone) return;
+  filesDndReady = true;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e => {
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+  });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) filesUpload(e.dataTransfer.files);
+  });
+}
+
+// ---- Route Map ----
+let mapInstance       = null;
+let mapLayerGroup     = null;
+let mapGeocodes       = {};
+let mapGeocodesLoaded = false;
+let mapFiltersBuilt   = false;
+
+function loadMapWindow() {
+  // Ensure rally data is loaded (reuse the same dataset)
+  if (!rallyLoaded) {
+    fetch('/api/rally-bot/routes')
+      .then(r => r.json())
+      .then(data => {
+        rallyAllRoutes = data.routes || [];
+        rallyLoaded = true;
+        buildRallyFilterOptions();
+        _mapInit();
+      })
+      .catch(() => { /* data load failed */ });
+  } else {
+    _mapInit();
+  }
+}
+
+function _mapInit() {
+  // Init Leaflet once
+  if (!mapInstance) {
+    mapInstance = L.map('map-container').setView([50.5, 10], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(mapInstance);
+    mapLayerGroup = L.layerGroup().addTo(mapInstance);
+  }
+  setTimeout(() => mapInstance && mapInstance.invalidateSize(), 300);
+
+  // Load geocodes then render
+  if (!mapGeocodesLoaded) {
+    fetch('/api/rally-bot/geocodes')
+      .then(r => r.json())
+      .then(data => {
+        mapGeocodes = data;
+        mapGeocodesLoaded = true;
+        applyMapFilters();
+      })
+      .catch(() => applyMapFilters());
+  } else {
+    applyMapFilters();
+  }
+}
+
+async function _geocodeCity(city) {
+  if (mapGeocodes[city]) return mapGeocodes[city];
+  try {
+    const r = await fetch('/api/rally-bot/geocode?city=' + encodeURIComponent(city));
+    const d = await r.json();
+    if (d.coords) { mapGeocodes[city] = d.coords; return d.coords; }
+  } catch (_) {}
+  return null;
+}
+
+async function applyMapFilters() {
+  if (!mapInstance) return;
+  mapLayerGroup.clearLayers();
+
+  const selOrigins = new Set(getMsSelected('ms-origin-options'));
+  const selDests   = new Set(getMsSelected('ms-dest-options'));
+  const selModels  = new Set(getMsSelected('ms-model-options'));
+  const filterStart = calApplied.start;
+  const filterEnd   = calApplied.end;
+
+  // Collect (origin, destination) pairs with aggregated details
+  const pairMap = {}; // key => { origin, destination, items:[{model,dates}] }
+
+  rallyAllRoutes.forEach(route => {
+    if (selOrigins.size && !selOrigins.has(route.origin)) return;
+    (route.returns || []).forEach(ret => {
+      if ((ret.model_name || '').toLowerCase() === 'unknown') return;
+      if (selDests.size  && !selDests.has(ret.destination)) return;
+      if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase())) return;
+
+      // Date filter: keep if any date range overlaps [filterStart, filterEnd]
+      let dates = ret.available_dates || [];
+      if (filterStart || filterEnd) {
+        dates = dates.filter(dr => {
+          const routeStart = parseDMY(dr.startDate);
+          const routeEnd   = parseDMY(dr.endDate);
+          return (!filterStart || routeEnd >= filterStart) && (!filterEnd || routeStart <= filterEnd);
+        });
+        if (!dates.length) return;
+      }
+
+      const key = route.origin + '||' + ret.destination;
+      if (!pairMap[key]) pairMap[key] = { origin: route.origin, destination: ret.destination, items: [] };
+      pairMap[key].items.push({ model: ret.model_name || 'Unknown', image: ret.model_image || '', dates, url: ret.roadsurfer_url || '' });
+    });
+  });
+
+  const pairs = Object.values(pairMap);
+
+  // Collect all unique city names and geocode any missing ones
+  const allCities = new Set();
+  pairs.forEach(p => { allCities.add(p.origin); allCities.add(p.destination); });
+  await Promise.all([...allCities].map(c => _geocodeCity(c)));
+
+  // Render
+  let visible = 0; let missing = 0;
+  const cityMarkersAdded = new Set();
+
+  // Color palette for route lines
+  const COLORS = ['#63b3ed','#68d391','#f6ad55','#fc8181','#b794f4','#76e4f7','#f6e05e','#fbb6ce'];
+  let colorIdx = 0;
+
+  const exclAmerica = document.getElementById('rally-excl-america').checked;
+  const exclEurope  = document.getElementById('rally-excl-europe').checked;
+  const isAmericas  = coords => coords[1] < -30;
+  const isEurope    = coords => coords[0] >= 35 && coords[0] <= 72 && coords[1] >= -15 && coords[1] <= 45;
+
+  pairs.forEach(pair => {
+    const oc = mapGeocodes[pair.origin];
+    const dc = mapGeocodes[pair.destination];
+    if (!oc || !dc) { missing++; return; }
+
+    // Continent exclusion
+    if (exclAmerica && (isAmericas(oc) || isAmericas(dc))) { missing++; return; }
+    if (exclEurope  && (isEurope(oc)   || isEurope(dc)))   { missing++; return; }
+
+    visible++;
+    const color = COLORS[colorIdx % COLORS.length];
+    colorIdx++;
+
+    // Origin marker
+    if (!cityMarkersAdded.has(pair.origin)) {
+      cityMarkersAdded.add(pair.origin);
+      L.circleMarker(oc, { radius: 5, color: '#fff', fillColor: '#63b3ed', fillOpacity: 1, weight: 1.5 })
+        .bindTooltip(pair.origin).addTo(mapLayerGroup);
+    }
+    // Destination marker
+    if (!cityMarkersAdded.has(pair.destination)) {
+      cityMarkersAdded.add(pair.destination);
+      L.circleMarker(dc, { radius: 5, color: '#fff', fillColor: '#68d391', fillOpacity: 1, weight: 1.5 })
+        .bindTooltip(pair.destination).addTo(mapLayerGroup);
+    }
+
+    // Build popup content
+    let popupHtml = `<div class="map-popup">`;
+    popupHtml += `<div class="map-popup-title">${pair.origin} → ${pair.destination}</div>`;
+    // Deduplicate images so each van photo appears once
+    const seenImages = new Set();
+    pair.items.forEach(item => {
+      if (item.image && !seenImages.has(item.image)) {
+        seenImages.add(item.image);
+        popupHtml += `<img class="map-popup-img" src="/api/rally-bot/assets/${encodeURIComponent(item.image)}" alt="${item.model}" />`;
+      }
+      popupHtml += `<div class="map-popup-model">🚐 ${item.model}</div>`;
+      item.dates.forEach(dr => {
+        const bookBtn = item.url
+          ? `<a href="${item.url}" target="_blank" class="rc-book map-popup-book">Book →</a>`
+          : '';
+        popupHtml += `<div class="map-popup-date">📅 ${dr.startDate} → ${dr.endDate}${bookBtn}</div>`;
+      });
+    });
+    popupHtml += `</div>`;
+
+    // Visible line
+    const line = L.polyline([oc, dc], { color, weight: 2.5, opacity: 0.8 });
+    // Wide transparent hit-area on top so clicks are easier
+    const hitLine = L.polyline([oc, dc], { color: 'transparent', weight: 18, opacity: 0 });
+    const popup = L.popup({ maxWidth: 300 }).setContent(popupHtml);
+    hitLine.bindPopup(popup);
+    // Hover highlight
+    hitLine.on('mouseover', () => line.setStyle({ weight: 5, opacity: 1 }));
+    hitLine.on('mouseout',  () => line.setStyle({ weight: 2.5, opacity: 0.8 }));
+    line.addTo(mapLayerGroup);
+    hitLine.addTo(mapLayerGroup);
+  });
+
+  document.getElementById('map-route-count').textContent  = visible;
+  document.getElementById('map-missing-count').textContent = missing;
+}
+
+function clearMapFilters() {
+  // Clear all multiselects
+  ['map-ms-origin-options','map-ms-dest-options','map-ms-model-options'].forEach(id => {
+    const cont = document.getElementById(id);
+    if (!cont) return;
+    cont.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    cont.querySelectorAll('.ms-option').forEach(o => o.classList.remove('checked'));
+    updateMsTriggerLabel(cont.closest('.ms-wrapper'));
+  });
+  mapCalReset();
+  document.getElementById('map-excl-america').checked = false;
+  document.getElementById('map-excl-europe').checked  = false;
+  applyMapFilters();
+}
+
+// ---- Map calendar (mirrors the rally calendar logic) ----
+let mapCalViewYear  = new Date().getFullYear();
+let mapCalViewMonth = new Date().getMonth();
+let mapCalPickStart = null;
+let mapCalPickEnd   = null;
+let mapCalApplied   = { start: null, end: null };
+
+function mapCalToggle(event) {
+  event.stopPropagation();
+  const wrapper = document.getElementById('map-cal-wrapper');
+  const isOpen  = wrapper.classList.contains('open');
+  document.querySelectorAll('.ms-wrapper.open').forEach(w => w.classList.remove('open'));
+  if (!isOpen) {
+    wrapper.classList.add('open');
+    renderMapCal();
+  }
+}
+
+function mapCalShiftMonth(delta, event) {
+  event.stopPropagation();
+  mapCalViewMonth += delta;
+  if (mapCalViewMonth > 11) { mapCalViewMonth = 0;  mapCalViewYear++; }
+  if (mapCalViewMonth < 0)  { mapCalViewMonth = 11; mapCalViewYear--; }
+  renderMapCal();
+}
+
+function renderMapCal() {
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  document.getElementById('map-cal-month-label').textContent =
+    `${MONTHS[mapCalViewMonth]} ${mapCalViewYear}`;
+
+  const grid = document.getElementById('map-cal-days');
+  grid.innerHTML = '';
+
+  const firstDay = new Date(mapCalViewYear, mapCalViewMonth, 1).getDay();
+  const offset   = (firstDay === 0) ? 6 : firstDay - 1;
+  const daysInMonth = new Date(mapCalViewYear, mapCalViewMonth + 1, 0).getDate();
+
+  for (let i = 0; i < offset; i++) {
+    const blank = document.createElement('span');
+    blank.className = 'cal-day cal-day-blank';
+    grid.appendChild(blank);
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(mapCalViewYear, mapCalViewMonth, day);
+    const btn = document.createElement('button');
+    btn.className = 'cal-day';
+    btn.textContent = day;
+    btn.onclick = (e) => { e.stopPropagation(); mapCalDayClick(d); };
+    if (d < today) btn.classList.add('cal-day-past');
+    const s = mapCalPickStart, e2 = mapCalPickEnd;
+    if (s && sameDay(d, s)) btn.classList.add('cal-day-start');
+    if (e2 && sameDay(d, e2)) btn.classList.add('cal-day-end');
+    if (s && e2 && d > s && d < e2) btn.classList.add('cal-day-range');
+    if (s && !e2 && sameDay(d, s)) btn.classList.add('cal-day-start', 'cal-day-end');
+    grid.appendChild(btn);
+  }
+
+  const txt = document.getElementById('map-cal-selection-txt');
+  if (mapCalPickStart && mapCalPickEnd) {
+    txt.textContent = `${fmtDMY(mapCalPickStart)} → ${fmtDMY(mapCalPickEnd)}`;
+  } else if (mapCalPickStart) {
+    txt.textContent = `${fmtDMY(mapCalPickStart)} → pick end`;
+  } else {
+    txt.textContent = '';
+  }
+}
+
+function mapCalDayClick(date) {
+  if (!mapCalPickStart || (mapCalPickStart && mapCalPickEnd)) {
+    mapCalPickStart = date;
+    mapCalPickEnd   = null;
+  } else {
+    if (date < mapCalPickStart) {
+      mapCalPickEnd   = mapCalPickStart;
+      mapCalPickStart = date;
+    } else {
+      mapCalPickEnd = date;
+    }
+  }
+  renderMapCal();
+}
+
+function mapCalApply(event) {
+  event.stopPropagation();
+  mapCalApplied.start = mapCalPickStart;
+  mapCalApplied.end   = mapCalPickEnd;
+
+  const label = document.getElementById('map-cal-label');
+  if (mapCalApplied.start && mapCalApplied.end) {
+    label.textContent = `${fmtDMY(mapCalApplied.start)} → ${fmtDMY(mapCalApplied.end)}`;
+    label.classList.add('has-selection');
+  } else if (mapCalApplied.start) {
+    label.textContent = `From ${fmtDMY(mapCalApplied.start)}`;
+    label.classList.add('has-selection');
+  } else {
+    label.textContent = 'Any date';
+    label.classList.remove('has-selection');
+  }
+
+  document.getElementById('map-cal-wrapper').classList.remove('open');
+  applyMapFilters();
+}
+
+function mapCalClear(event) {
+  event.stopPropagation();
+  mapCalPickStart = null;
+  mapCalPickEnd   = null;
+  renderMapCal();
+}
+
+function mapCalReset() {
+  mapCalPickStart = null; mapCalPickEnd = null;
+  mapCalApplied   = { start: null, end: null };
+  const label = document.getElementById('map-cal-label');
+  if (label) { label.textContent = 'Any date'; label.classList.remove('has-selection'); }
 }
