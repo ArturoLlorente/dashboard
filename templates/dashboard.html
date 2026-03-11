@@ -310,8 +310,13 @@
                   <button class="min-days-apply" data-i18n="btn_apply" onclick="onFilterChange()">Apply</button>
                 </div>
               </div>
-              <div class="filter-group filter-group-btn">
+              <div class="filter-group filter-group-btn" style="flex-direction:row;gap:8px;align-items:flex-end">
                 <button class="btn" data-i18n="btn_clear_all" onclick="clearRallyFilters()">Clear All</button>
+                <div class="presets-dropdown-wrap">
+                  <button class="btn btn-save-preset" onclick="saveFilterPreset()">Save Filters</button>
+                  <button class="btn btn-presets-toggle" id="btn-presets-toggle" onclick="togglePresetsDropdown(event)" style="display:none">&#128190; <span id="presets-count">0</span> &#9660;</button>
+                  <div class="presets-dropdown" id="presets-dropdown"></div>
+                </div>
               </div>
             </div><!-- end .rally-filters -->
 

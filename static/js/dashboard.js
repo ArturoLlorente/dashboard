@@ -22,6 +22,7 @@ const TRANSLATIONS = {
     fltr_excl_americas:'Exclude Americas', fltr_excl_europe:'Exclude Europe',
     fltr_min_days:'Min Days', fltr_days_suffix:'days',
     fltr_source:'Source',
+    btn_save_preset:'Save Filter', btn_saved_presets:'Saved Filters',
     btn_clear_all:'Clear All', btn_clear:'Clear', btn_apply:'Apply',
     stat_total_routes:'Total Routes', stat_available_returns:'Available Returns',
     stat_visible_routes:'Visible Routes', stat_unknown_locs:'Unknown Locations',
@@ -66,6 +67,7 @@ const TRANSLATIONS = {
     fltr_excl_americas:'Excluir Am\u00e9ricas', fltr_excl_europe:'Excluir Europa',
     fltr_min_days:'D\u00edas M\u00edn', fltr_days_suffix:'d\u00edas',
     fltr_source:'Fuente',
+    btn_save_preset:'Guardar Filtro', btn_saved_presets:'Filtros Guardados',
     btn_clear_all:'Limpiar Todo', btn_clear:'Limpiar', btn_apply:'Aplicar',
     stat_total_routes:'Rutas Totales', stat_available_returns:'Retornos Disponibles',
     stat_visible_routes:'Rutas Visibles', stat_unknown_locs:'Ubic. Desconocidas',
@@ -1491,7 +1493,163 @@ function filterMsPanel(input) {
 
 document.addEventListener('click', () => {
   document.querySelectorAll('.ms-wrapper.open').forEach(w => w.classList.remove('open'));
+  closePresetsDropdown();
 });
+
+// ---- Filter Presets ----
+function updateCalLabel() {
+  const label = document.getElementById('cal-label');
+  if (!label) return;
+  if (calApplied.start && calApplied.end) {
+    label.textContent = `${fmtDMY(calApplied.start)} → ${fmtDMY(calApplied.end)}`;
+    label.classList.add('has-selection');
+  } else if (calApplied.start) {
+    label.textContent = `${t('fltr_from')} ${fmtDMY(calApplied.start)}`;
+    label.classList.add('has-selection');
+  } else {
+    label.textContent = t('fltr_any_date');
+    label.classList.remove('has-selection');
+  }
+}
+
+let savedPresets = JSON.parse(localStorage.getItem('rallyFilterPresets') || '[]');
+
+function _captureFilterState() {
+  const origins = getMsSelected('ms-origin-options');
+  const dests   = getMsSelected('ms-dest-options');
+  const models  = getMsSelected('ms-model-options');
+  const minDays = document.getElementById('rally-min-days').value;
+  return {
+    origins,
+    dests,
+    models,
+    calStart: calApplied.start ? calApplied.start.getTime() : null,
+    calEnd:   calApplied.end   ? calApplied.end.getTime()   : null,
+    exclAmerica:     document.getElementById('rally-excl-america').checked,
+    exclEurope:      document.getElementById('rally-excl-europe').checked,
+    srcImoova:       document.getElementById('rally-src-imoova').checked,
+    srcIndiecampers: document.getElementById('rally-src-indiecampers').checked,
+    srcRoadsurfer:   document.getElementById('rally-src-roadsurfer').checked,
+    minDays: minDays || '',
+  };
+}
+
+function _presetName(s) {
+  const orig = s.origins.length ? s.origins.slice(0,1).map(cityT)[0] : null;
+  const dest = s.dests.length   ? s.dests.slice(0,1).map(cityT)[0]   : null;
+  const parts = [];
+  if (orig && dest)  parts.push(orig + '→' + dest);
+  else if (orig)     parts.push(orig + '→?');
+  else if (dest)     parts.push('?→' + dest);
+  if (s.calStart) {
+    const d = new Date(s.calStart);
+    parts.push((d.getMonth()+1) + '/' + d.getFullYear().toString().slice(2));
+  }
+  if (s.minDays)          parts.push(s.minDays + 'd+');
+  if (!s.srcImoova)       parts.push('−Im');
+  if (!s.srcIndiecampers) parts.push('−IC');
+  if (!s.srcRoadsurfer)   parts.push('−RS');
+  if (s.exclAmerica)      parts.push('−AM');
+  if (s.exclEurope)       parts.push('−EU');
+  return parts.length ? parts.join(' ') : 'All';
+}
+
+function _presetSummary(s) {
+  const lines = [];
+  if (s.origins.length) lines.push('From: ' + s.origins.map(cityT).join(', '));
+  if (s.dests.length)   lines.push('To: '   + s.dests.map(cityT).join(', '));
+  if (s.models.length)  lines.push('Model: ' + s.models.join(', '));
+  if (s.calStart) {
+    const d1 = fmtDMY(new Date(s.calStart));
+    const d2 = s.calEnd ? fmtDMY(new Date(s.calEnd)) : '?';
+    lines.push('Date: ' + d1 + ' → ' + d2);
+  }
+  if (s.minDays) lines.push('Min: ' + s.minDays + ' days');
+  const src = [s.srcImoova && 'Imoova', s.srcIndiecampers && 'Indie', s.srcRoadsurfer && 'RS'].filter(Boolean);
+  if (src.length < 3) lines.push('Src: ' + src.join(', '));
+  if (s.exclAmerica) lines.push('No Americas');
+  if (s.exclEurope)  lines.push('No Europe');
+  return lines.join(' · ');
+}
+
+function saveFilterPreset() {
+  const state = _captureFilterState();
+  const name  = _presetName(state);
+  savedPresets.push({ name, state });
+  localStorage.setItem('rallyFilterPresets', JSON.stringify(savedPresets));
+  renderPresets();
+}
+
+function loadFilterPreset(idx) {
+  const s = savedPresets[idx]?.state;
+  if (!s) return;
+  // Restore multiselects
+  [['ms-origin-options', s.origins], ['ms-dest-options', s.dests], ['ms-model-options', s.models]].forEach(([id, vals]) => {
+    const cont = document.getElementById(id);
+    if (!cont) return;
+    const valSet = new Set(vals);
+    cont.querySelectorAll('.ms-option').forEach(opt => {
+      const cb = opt.querySelector('input[type=checkbox]');
+      const checked = valSet.has(cb?.value || '');
+      if (cb) cb.checked = checked;
+      opt.classList.toggle('checked', checked);
+    });
+    cont.querySelectorAll('.ms-group-header input[type=checkbox]').forEach(cb => { cb.indeterminate = false; cb.checked = false; });
+    updateMsTriggerLabel(cont.closest('.ms-wrapper'));
+  });
+  // Restore calendar
+  calApplied.start = s.calStart ? new Date(s.calStart) : null;
+  calApplied.end   = s.calEnd   ? new Date(s.calEnd)   : null;
+  calPickStart = calApplied.start; calPickEnd = calApplied.end;
+  updateCalLabel();
+  // Restore checkboxes + min days
+  document.getElementById('rally-excl-america').checked     = !!s.exclAmerica;
+  document.getElementById('rally-excl-europe').checked      = !!s.exclEurope;
+  document.getElementById('rally-src-imoova').checked       = s.srcImoova !== false;
+  document.getElementById('rally-src-indiecampers').checked = s.srcIndiecampers !== false;
+  document.getElementById('rally-src-roadsurfer').checked   = s.srcRoadsurfer !== false;
+  document.getElementById('rally-min-days').value           = s.minDays || '';
+  onFilterChange();
+}
+
+function deleteFilterPreset(idx, e) {
+  e.stopPropagation();
+  savedPresets.splice(idx, 1);
+  localStorage.setItem('rallyFilterPresets', JSON.stringify(savedPresets));
+  renderPresets();
+}
+
+function renderPresets() {
+  const dropdown = document.getElementById('presets-dropdown');
+  const toggleBtn = document.getElementById('btn-presets-toggle');
+  const countEl = document.getElementById('presets-count');
+  if (!dropdown) return;
+  if (!savedPresets.length) {
+    dropdown.innerHTML = '';
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    return;
+  }
+  if (toggleBtn) toggleBtn.style.display = '';
+  if (countEl) countEl.textContent = savedPresets.length;
+  dropdown.innerHTML = savedPresets.map((p, i) =>
+    `<div class="preset-item" onclick="loadFilterPreset(${i});closePresetsDropdown()">`
+    + `<span class="preset-name">${p.name}</span>`
+    + `<span class="preset-summary">${_presetSummary(p.state)}</span>`
+    + `<button class="preset-del" onclick="deleteFilterPreset(${i},event)" title="Remove">&times;</button>`
+    + `</div>`
+  ).join('');
+}
+
+function togglePresetsDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('presets-dropdown');
+  if (dd) dd.classList.toggle('open');
+}
+
+function closePresetsDropdown() {
+  const dd = document.getElementById('presets-dropdown');
+  if (dd) dd.classList.remove('open');
+}
 
 function clearRallyFilters() {
   ['ms-origin-options','ms-dest-options','ms-model-options'].forEach(id => {
@@ -2473,3 +2631,4 @@ function mapCalReset() {
 
 // Apply language after all variables are initialised
 applyLang();
+renderPresets();

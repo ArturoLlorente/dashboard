@@ -411,6 +411,32 @@ input[type="range"]::-moz-range-thumb{
 .min-days-apply{padding:4px 10px;border-radius:6px;border:1px solid rgba(56,189,248,.28);background:rgba(56,189,248,.10);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
 .min-days-apply:hover{background:rgba(56,189,248,.2)}
 
+/* ---- Saved filter presets ---- */
+.btn-save-preset{background:rgba(99,179,237,.12);border-color:rgba(99,179,237,.35);color:var(--accent);font-size:12px}
+.btn-save-preset:hover{background:rgba(99,179,237,.22)}
+.btn-presets-toggle{background:rgba(99,179,237,.12);border-color:rgba(99,179,237,.35);color:var(--accent);font-size:12px;white-space:nowrap}
+.btn-presets-toggle:hover{background:rgba(99,179,237,.22)}
+.presets-dropdown-wrap{position:relative;display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.presets-dropdown{
+  display:none;position:absolute;top:calc(100% + 6px);right:0;
+  min-width:240px;max-width:320px;
+  background:#0b1121;border:1px solid var(--accent2);
+  border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.6);
+  z-index:500;overflow:hidden;
+}
+.presets-dropdown.open{display:block}
+.preset-item{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  cursor:pointer;border-bottom:1px solid rgba(148,163,184,.12);
+  transition:background .15s;
+}
+.preset-item:last-child{border-bottom:none}
+.preset-item:hover{background:rgba(99,179,237,.1)}
+.preset-name{font-size:13px;font-weight:700;color:var(--accent);white-space:nowrap;flex-shrink:0}
+.preset-summary{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.preset-del{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0}
+.preset-del:hover{color:#fc8181}
+
 .filter-label{
   font-size:11px;letter-spacing:.8px;text-transform:uppercase;
   color:var(--muted);font-weight:900
@@ -852,8 +878,8 @@ input[type="range"]::-moz-range-thumb{
   /* ---- rally filters: stack vertically ---- */
   .rally-filters{flex-direction:column;gap:8px;padding:12px}
   .filter-group{min-width:0;width:100%;flex:none}
-  .filter-group-btn{align-self:stretch}
-  .filter-group-btn .btn{width:100%}
+  .filter-group-btn{align-self:stretch;flex-direction:row !important;gap:8px}
+  .filter-group-btn .btn{flex:1}
 
   /* multi-select dropdowns: full width, above bottom nav */
   .ms-wrapper{width:100%;position:relative;z-index:1}

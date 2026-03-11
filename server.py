@@ -14,12 +14,104 @@ import secrets
 import argparse
 import shutil
 import mimetypes
-import shutil
-import mimetypes
+import sys
+
+# Allow importing data fetchers from rally_bot sibling package
+_RALLY_BOT_DIR = Path(__file__).parent.parent / 'rally_bot'
+if str(_RALLY_BOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_RALLY_BOT_DIR.parent))
 
 app = Flask(__name__)
 
-# Battery history configuration
+# ---- Rally routes auto-refresh config ----
+ROUTES_FILE = Path(__file__).parent.parent / 'rally_bot' / 'station_routes.json'
+# How often (seconds) to fetch fresh data from the APIs if the file hasn't been
+# updated by the Telegram bot.  0 = watcher only (never self-fetch).
+ROUTES_REFRESH_INTERVAL = 1800  # 30 minutes
+
+_routes_cache: dict = {'data': None, 'mtime': 0.0}
+_routes_updating = threading.Event()   # set while a fetch is in progress
+_routes_lock = threading.Lock()
+
+
+def _load_routes_if_changed() -> bool:
+    """Reload the in-memory cache if station_routes.json was modified.
+    Returns True if the cache was updated."""
+    global _routes_cache
+    try:
+        mtime = ROUTES_FILE.stat().st_mtime
+    except OSError:
+        return False
+    with _routes_lock:
+        if mtime == _routes_cache['mtime']:
+            return False
+        with open(ROUTES_FILE, 'r') as f:
+            data = json.load(f)
+        _routes_cache = {'data': data, 'mtime': mtime}
+    return True
+
+
+def _fetch_routes_from_apis():
+    """Run all three data fetchers synchronously and save station_routes.json.
+    Safe to call from a background thread."""
+    if _routes_updating.is_set():
+        return  # already running
+    _routes_updating.set()
+    try:
+        from rally_bot.data_fetcher import StationDataFetcher, ImoovaDataFetcher, IndieCampersDataFetcher
+        import logging
+        logger = logging.getLogger('dashboard.routes_refresh')
+        logger.info('Routes refresh: starting API fetch...')
+
+        imoova = ImoovaDataFetcher(logger)
+        indie  = IndieCampersDataFetcher(logger)
+        rs     = StationDataFetcher(logger)
+
+        merged = list(imoova.sync_full_update() or [])
+        imoova.output_data = merged
+        imoova.save_output_to_json(ROUTES_FILE)
+
+        merged += indie.sync_full_update() or []
+        indie.output_data = merged
+        indie.save_output_to_json(ROUTES_FILE)
+
+        rs_data = rs.sync_full_update() or []
+        merged += rs_data
+        rs.output_data = merged
+        rs.save_output_to_json(ROUTES_FILE)
+
+        _load_routes_if_changed()
+        logger.info(f'Routes refresh: done — {len(merged)} entries')
+    except Exception as e:
+        import logging
+        logging.getLogger('dashboard.routes_refresh').error(f'Routes refresh failed: {e}', exc_info=True)
+    finally:
+        _routes_updating.clear()
+
+
+def _routes_watcher():
+    """Background daemon thread:
+    - Reloads the cache whenever station_routes.json changes on disk.
+    - If ROUTES_REFRESH_INTERVAL > 0 and the file hasn't been updated
+      within that interval, kicks off a fresh API fetch.
+    """
+    _load_routes_if_changed()  # warm up cache at startup
+    while True:
+        time.sleep(30)
+        changed = _load_routes_if_changed()
+        if changed:
+            import logging
+            logging.getLogger('dashboard.routes_refresh').info(
+                'station_routes.json changed on disk — cache reloaded')
+        if ROUTES_REFRESH_INTERVAL > 0 and not _routes_updating.is_set():
+            try:
+                age = time.time() - ROUTES_FILE.stat().st_mtime
+                if age > ROUTES_REFRESH_INTERVAL:
+                    threading.Thread(target=_fetch_routes_from_apis, daemon=True).start()
+            except OSError:
+                pass
+
+# ---- Battery history configuration ----
 BATTERY_HISTORY_FILE = Path(__file__).parent / 'battery_history.json'
 
 # Todo storage
@@ -731,13 +823,16 @@ def rally_bot_asset(filename):
 def rally_bot_routes():
     """Get rally bot station routes with optional filtering"""
     try:
-        rally_file = Path(__file__).parent.parent / 'rally_bot' / 'station_routes.json'
-        if not rally_file.exists():
+        # Use in-memory cache; falls back to disk if cache is cold
+        with _routes_lock:
+            all_routes = _routes_cache['data']
+        if all_routes is None:
+            _load_routes_if_changed()
+            with _routes_lock:
+                all_routes = _routes_cache['data']
+        if all_routes is None:
             return jsonify({'success': False, 'error': 'Rally bot data not found'})
-        
-        with open(rally_file, 'r') as f:
-            all_routes = json.load(f)
-        
+
         # Build image lookup from models that have images, then fill gaps
         img_lookup = {}
         for route in all_routes:
@@ -766,6 +861,15 @@ def rally_bot_routes():
                     key = ret.get('model_name', '').lower()
                     if key in fallback_map and fallback_map[key]:
                         ret['model_image'] = fallback_map[key]
+                # Deduplicate available_dates by (startDate, endDate, duration)
+                seen_dates = set()
+                unique_dates = []
+                for dr in ret.get('available_dates', []):
+                    dk = (dr.get('startDate'), dr.get('endDate'), dr.get('duration'))
+                    if dk not in seen_dates:
+                        seen_dates.add(dk)
+                        unique_dates.append(dr)
+                ret['available_dates'] = unique_dates
 
         # Get filter parameters (comma-separated multi-values supported)
         def parse_multi(param):
@@ -845,6 +949,15 @@ def rally_bot_routes():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/rally-bot/refresh', methods=['POST'])
+def rally_bot_refresh():
+    """Manually trigger a fresh data fetch from all relocation APIs."""
+    if _routes_updating.is_set():
+        return jsonify({'success': False, 'message': 'Update already in progress'})
+    threading.Thread(target=_fetch_routes_from_apis, daemon=True).start()
+    return jsonify({'success': True, 'message': 'Refresh started in background'})
 
 
 @app.route('/api/rally-bot/stats')
@@ -1176,6 +1289,9 @@ def main():
     # Start background metrics collection thread
     collector_thread = threading.Thread(target=background_metrics_collector, daemon=True)
     collector_thread.start()
+
+    # Start rally routes file watcher / auto-refresh thread
+    threading.Thread(target=_routes_watcher, daemon=True, name='routes_watcher').start()
 
     parser = argparse.ArgumentParser(description='Server Dashboard')
     parser.add_argument('--port', type=int, default=6969, help='Port to listen on (default: 6969)')
