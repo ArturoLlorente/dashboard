@@ -1,6 +1,219 @@
 const REFRESH_MS = 5000;
 const MAX_POINTS = 60;
 
+// ---- Internationalisation ----
+const TRANSLATIONS = {
+  en: {
+    app_title:'Server Dashboard', app_subtitle:'Real-time system monitoring & control',
+    nav_sidebar:'Navigation', nav_rally:'Rally Bot', nav_map:'Map', nav_admin:'Admin',
+    nav_rally_stats:'Rally Stats', nav_metrics:'System Metrics', nav_controls:'Controls & Services',
+    nav_todo:'To-Do', nav_files:'Files',
+    win_metrics:'System Metrics', lbl_cpu_usage:'CPU Usage', lbl_memory:'Memory',
+    lbl_temperature:'Temperature', lbl_battery_history:'Battery History', lbl_disk:'Disk',
+    lbl_network:'Network', lbl_ip_address:'IP address',
+    win_controls:'Controls & Services', lbl_username:'Username', lbl_active_max:'Active / Max',
+    lbl_status:'Status', lbl_expires:'Expires', lbl_brightness:'Brightness',
+    btn_min:'Min', btn_max:'Max',
+    win_rally:'Rally Bot', btn_list_view:'☰ List', btn_map_view:'🗺️ Map',
+    fltr_origin:'Origin Station', fltr_all_origins:'All Origins',
+    fltr_destination:'Destination', fltr_all_dests:'All Destinations',
+    fltr_model:'Camper Model', fltr_all_models:'All Models',
+    fltr_date:'Date Range', fltr_any_date:'Any date', fltr_from:'From',
+    fltr_excl_americas:'Exclude Americas', fltr_excl_europe:'Exclude Europe',
+    fltr_min_days:'Min Days', fltr_days_suffix:'days',
+    fltr_source:'Source',
+    btn_clear_all:'Clear All', btn_clear:'Clear', btn_apply:'Apply',
+    stat_total_routes:'Total Routes', stat_available_returns:'Available Returns',
+    stat_visible_routes:'Visible Routes', stat_unknown_locs:'Unknown Locations',
+    msg_loading_routes:'Loading routes\u2026', msg_no_routes:'No routes found matching your filters',
+    msg_load_failed:'Failed to load routes', btn_book:'Book \u2192',
+    wd_mo:'Mo', wd_tu:'Tu', wd_we:'We', wd_th:'Th', wd_fr:'Fr', wd_sa:'Sa', wd_su:'Su',
+    months:'January,February,March,April,May,June,July,August,September,October,November,December',
+    win_rally_stats:'Rally Bot Stats', stat_notifs_sent:'Notifications Sent',
+    stat_recent_warn:'Recent Warnings', stat_recent_err:'Recent Errors',
+    lbl_data_overview:'Data Overview', lbl_last_refreshed:'Last refreshed',
+    lbl_earliest_date:'Earliest date', lbl_latest_date:'Latest date',
+    lbl_log_size:'Log file size', lbl_last_log:'Last log entry', lbl_favs:'Favorites saved',
+    lbl_van_models:'Van Models', lbl_top_origins:'Top Origins', lbl_recent_log:'Recent Log',
+    rbs_warn_title:'\u26a0\ufe0f Recent Warnings', rbs_err_title:'\ud83d\udd34 Recent Errors',
+    rbs_no_entries:'No entries found in recent log.',
+    win_todo:'To-Do List', btn_add_item:'+ Add Item', lbl_archived:'Archived',
+    todo_new:'New Item', todo_edit:'Edit Item',
+    lbl_title:'Title', lbl_due_date:'Due Date', lbl_description:'Description',
+    lbl_notes:'Additional Notes', btn_delete:'Delete', btn_cancel:'Cancel', btn_save:'Save',
+    ph_task_title:'Task title\u2026', ph_description:'Detailed description\u2026', ph_notes:'Additional notes\u2026',
+    win_files:'File Storage', btn_new_folder:'+ Folder', btn_upload:'\u2b06 Upload',
+    msg_drop_files:'Drop files here to upload, or use the Upload button',
+    admin_title:'Admin Access', admin_sub:'Enter the admin password to unlock restricted features',
+    btn_unlock:'Unlock', footer_refresh:'Auto-refresh every 5 seconds',
+  },
+  es: {
+    app_title:'Panel del Servidor', app_subtitle:'Monitoreo del sistema en tiempo real',
+    nav_sidebar:'Navegaci\u00f3n', nav_rally:'Rally Bot', nav_map:'Mapa', nav_admin:'Admin',
+    nav_rally_stats:'Stats Rally', nav_metrics:'M\u00e9tricas del Sistema',
+    nav_controls:'Controles y Servicios', nav_todo:'Tareas', nav_files:'Archivos',
+    win_metrics:'M\u00e9tricas del Sistema', lbl_cpu_usage:'Uso de CPU', lbl_memory:'Memoria',
+    lbl_temperature:'Temperatura', lbl_battery_history:'Historial de Bater\u00eda', lbl_disk:'Disco',
+    lbl_network:'Red', lbl_ip_address:'Direcci\u00f3n IP',
+    win_controls:'Controles y Servicios', lbl_username:'Usuario', lbl_active_max:'Activas / M\u00e1x',
+    lbl_status:'Estado', lbl_expires:'Vence', lbl_brightness:'Brillo',
+    btn_min:'M\u00edn', btn_max:'M\u00e1x',
+    win_rally:'Rally Bot', btn_list_view:'\u2630 Lista', btn_map_view:'\ud83d\uddfa\ufe0f Mapa',
+    fltr_origin:'Estaci\u00f3n de Origen', fltr_all_origins:'Todos los Or\u00edgenes',
+    fltr_destination:'Destino', fltr_all_dests:'Todos los Destinos',
+    fltr_model:'Modelo de Camper', fltr_all_models:'Todos los Modelos',
+    fltr_date:'Rango de Fechas', fltr_any_date:'Cualquier fecha', fltr_from:'Desde',
+    fltr_excl_americas:'Excluir Am\u00e9ricas', fltr_excl_europe:'Excluir Europa',
+    fltr_min_days:'D\u00edas M\u00edn', fltr_days_suffix:'d\u00edas',
+    fltr_source:'Fuente',
+    btn_clear_all:'Limpiar Todo', btn_clear:'Limpiar', btn_apply:'Aplicar',
+    stat_total_routes:'Rutas Totales', stat_available_returns:'Retornos Disponibles',
+    stat_visible_routes:'Rutas Visibles', stat_unknown_locs:'Ubic. Desconocidas',
+    msg_loading_routes:'Cargando rutas\u2026', msg_no_routes:'No se encontraron rutas con los filtros aplicados',
+    msg_load_failed:'Error al cargar las rutas', btn_book:'Reservar \u2192',
+    wd_mo:'Lu', wd_tu:'Ma', wd_we:'Mi', wd_th:'Ju', wd_fr:'Vi', wd_sa:'S\u00e1', wd_su:'Do',
+    months:'Enero,Febrero,Marzo,Abril,Mayo,Junio,Julio,Agosto,Septiembre,Octubre,Noviembre,Diciembre',
+    win_rally_stats:'Estad\u00edsticas del Bot', stat_notifs_sent:'Notificaciones Enviadas',
+    stat_recent_warn:'Advertencias Recientes', stat_recent_err:'Errores Recientes',
+    lbl_data_overview:'Resumen de Datos', lbl_last_refreshed:'\u00daltima actualizaci\u00f3n',
+    lbl_earliest_date:'Fecha m\u00e1s antigua', lbl_latest_date:'Fecha m\u00e1s reciente',
+    lbl_log_size:'Tama\u00f1o del log', lbl_last_log:'\u00daltima entrada', lbl_favs:'Favoritos guardados',
+    lbl_van_models:'Modelos de Furgoneta', lbl_top_origins:'Principales Or\u00edgenes',
+    lbl_recent_log:'Log Reciente',
+    rbs_warn_title:'\u26a0\ufe0f Advertencias Recientes', rbs_err_title:'\ud83d\udd34 Errores Recientes',
+    rbs_no_entries:'No se encontraron entradas en el log reciente.',
+    win_todo:'Lista de Tareas', btn_add_item:'+ Agregar Tarea', lbl_archived:'Archivado',
+    todo_new:'Nueva Tarea', todo_edit:'Editar Tarea',
+    lbl_title:'T\u00edtulo', lbl_due_date:'Fecha L\u00edmite', lbl_description:'Descripci\u00f3n',
+    lbl_notes:'Notas Adicionales', btn_delete:'Eliminar', btn_cancel:'Cancelar', btn_save:'Guardar',
+    ph_task_title:'T\u00edtulo de la tarea\u2026', ph_description:'Descripci\u00f3n detallada\u2026', ph_notes:'Notas adicionales\u2026',
+    win_files:'Almacenamiento', btn_new_folder:'+ Carpeta', btn_upload:'\u2b06 Subir',
+    msg_drop_files:'Suelta archivos aqu\u00ed para subir, o usa el bot\u00f3n Subir',
+    admin_title:'Acceso de Administrador', admin_sub:'Introduce la contrase\u00f1a de administrador para desbloquear',
+    btn_unlock:'Desbloquear', footer_refresh:'Actualizaci\u00f3n autom\u00e1tica cada 5 segundos',
+  }
+};
+
+const CITY_TRANSLATIONS = {
+  es: {
+    'Munich':'M\u00fanich','Berlin':'Berl\u00edn','Hamburg':'Hamburgo','Frankfurt':'Fr\u00e1ncfort',
+    'Cologne':'Colonia','Stuttgart':'Stuttgart','Nuremberg':'N\u00faremberg','Dresden':'Dresde',
+    'Vienna':'Viena','Salzburg':'Salzburgo','Innsbruck':'Innsbruck',
+    'Zurich':'Z\u00farich','Z\u00fcrich':'Z\u00farich','Geneva':'Ginebra','Bern':'Berna',
+    'Amsterdam':'\u00c1msterdam','Rotterdam':'R\u00f3terdam',
+    'Brussels':'Bruselas','Antwerp':'Amberes',
+    'Paris':'Par\u00eds','Marseille':'Marsella','Nice':'Niza','Bordeaux':'Burdeos',
+    'Lyon':'Lyon','Toulouse':'Toulouse','Strasbourg':'Estrasburgo',
+    'Madrid':'Madrid','Barcelona':'Barcelona','Seville':'Sevilla','Malaga':'M\u00e1laga',
+    'Lisbon':'Lisboa','Porto':'Oporto',
+    'Rome':'Roma','Milan':'Mil\u00e1n','Venice':'Venecia','Florence':'Florencia',
+    'Naples':'N\u00e1poles','Turin':'Tur\u00edn','Bologna':'Bolonia',
+    'London':'Londres','Edinburgh':'Edimburgo','Manchester':'M\u00e1nchester','Dublin':'Dubl\u00edn',
+    'Copenhagen':'Copenhague','Stockholm':'Estocolmo','Gothenburg':'Gotemburgo','Oslo':'Oslo',
+    'Prague':'Praga','Budapest':'Budapest','Warsaw':'Varsovia','Krakow':'Cracovia',
+    'Bratislava':'Bratislava','Ljubljana':'Liubliana','Zagreb':'Zagreb',
+    'Bucharest':'Bucarest','Sofia':'Sof\u00eda','Belgrade':'Belgrado',
+    'Tallinn':'Tallin','Riga':'Riga','Vilnius':'Vilna',
+    'Athens':'Atenas','Thessaloniki':'Sal\u00f3nica',
+    'New York':'Nueva York','Los Angeles':'Los \u00c1ngeles','Chicago':'Chicago',
+    'Miami':'Miami','Cancun':'Canc\u00fan','Mexico City':'Ciudad de M\u00e9xico',
+    'Buenos Aires':'Buenos Aires','Santiago':'Santiago',
+    'Sydney':'S\u00eddney','Melbourne':'Melbourne','Auckland':'Auckland',
+    'Cape Town':'Ciudad del Cabo','Johannesburg':'Johannesburgo',
+  }
+};
+
+const CITY_COUNTRY = {
+  'A Coruña':'Spain','Alicante':'Spain','Barcelona':'Spain','Bilbao':'Spain',
+  'Madrid':'Spain','Malaga':'Spain','Palma':'Spain','Seville':'Spain',
+  'Tenerife':'Spain','Valencia':'Spain',
+  'Bari':'Italy','Bergamo':'Italy','Bologna':'Italy','Cagliari':'Italy',
+  'Catania':'Italy','Florence':'Italy','Milan':'Italy','Milan Malpensa':'Italy',
+  'Naples':'Italy','Olbia':'Italy','Palermo':'Italy','Pisa':'Italy',
+  'Rome':'Italy','Venice':'Italy',
+  'Berlin':'Germany','Cologne':'Germany','Dusseldorf':'Germany',
+  'Frankfurt':'Germany','Hamburg':'Germany','Munich':'Germany','Stuttgart':'Germany',
+  'Bordeaux':'France','Bastia':'France','Lyon':'France','Marseille':'France',
+  'Nantes':'France','Nice':'France','Paris':'France','Paris CDG':'France',
+  'Paris Orly':'France','Toulouse':'France',
+  'Bristol':'United Kingdom','Edinburgh':'United Kingdom','Glasgow':'United Kingdom',
+  'Inverness':'United Kingdom','London':'United Kingdom','London Heathrow':'United Kingdom',
+  'Manchester':'United Kingdom',
+  'Faro':'Portugal','Lisbon':'Portugal','Porto':'Portugal',
+  'Amsterdam':'Netherlands','Brussels':'Belgium','Dublin':'Ireland',
+  'Malmoe':'Sweden','Malmö':'Sweden','Stockholm':'Sweden',
+  'Bergen':'Norway','Oslo':'Norway','Tromso':'Norway','Trondheim':'Norway',
+  'Vienna':'Austria','Geneva':'Switzerland','Zurich':'Switzerland',
+  'Split':'Croatia',
+  'Calgary':'Canada','Montreal':'Canada','Toronto':'Canada','Vancouver':'Canada',
+  'Elkhart':'United States',
+};
+
+const COUNTRY_TRANSLATIONS = {
+  es: {
+    'Spain':'España','Italy':'Italia','Germany':'Alemania','France':'Francia',
+    'United Kingdom':'Reino Unido','Portugal':'Portugal','Netherlands':'Países Bajos',
+    'Belgium':'Bélgica','Ireland':'Irlanda','Sweden':'Suecia','Norway':'Noruega',
+    'Austria':'Austria','Switzerland':'Suiza','Croatia':'Croacia',
+    'Canada':'Canadá','United States':'Estados Unidos',
+  }
+};
+
+let currentLang = localStorage.getItem('dashLang') || 'en';
+
+function t(key) {
+  return (TRANSLATIONS[currentLang] || {})[key] || TRANSLATIONS.en[key] || key;
+}
+function cityT(name) {
+  if (!name) return name;
+  return (CITY_TRANSLATIONS[currentLang] || {})[name] || name;
+}
+function countryT(name) {
+  if (!name) return name;
+  return (COUNTRY_TRANSLATIONS[currentLang] || {})[name] || name;
+}
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('dashLang', lang);
+  document.documentElement.lang = lang;
+  applyLang();
+}
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  // Update multiselect default labels
+  const msMap = { 'ms-origin':'fltr_all_origins', 'ms-dest':'fltr_all_dests', 'ms-model':'fltr_all_models' };
+  Object.entries(msMap).forEach(([id, key]) => {
+    const w = document.getElementById(id);
+    if (w) { w.dataset.placeholder = t(key); updateMsTriggerLabel(w); }
+  });
+  // Update calendar label
+  const calLabel = document.getElementById('cal-label');
+  if (calLabel) {
+    if (!calApplied.start) {
+      calLabel.textContent = t('fltr_any_date');
+      calLabel.classList.remove('has-selection');
+    } else if (calApplied.start && calApplied.end) {
+      calLabel.textContent = `${fmtDMY(calApplied.start)} \u2192 ${fmtDMY(calApplied.end)}`;
+    } else {
+      calLabel.textContent = `${t('fltr_from')} ${fmtDMY(calApplied.start)}`;
+    }
+  }
+  if (document.getElementById('cal-wrapper')?.classList.contains('open')) renderCal();
+  // Mark active language button
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === currentLang));
+  // Re-render dynamic route content
+  if (typeof rallyLoaded !== 'undefined' && rallyLoaded) {
+    buildRallyFilterOptions();
+    if (currentRallyView === 'list') applyRallyFilters();
+    else if (currentRallyView === 'map' && typeof mapInstance !== 'undefined' && mapInstance) applyMapFilters();
+  }
+}
+
 // ---- Quick stats update (always visible) ----
 function updateQuickStats() {
   fetch('/api/quick-stats')
@@ -770,14 +983,14 @@ function escHtml(str) {
 
 function rbsShowDetail(type) {
   const lines  = type === 'warn' ? rbsWarnLines : rbsErrLines;
-  const title  = type === 'warn' ? '⚠️ Recent Warnings' : '🔴 Recent Errors';
+  const title  = type === 'warn' ? t('rbs_warn_title') : t('rbs_err_title');
   const cls    = type === 'warn' ? 'rbs-log-warn' : 'rbs-log-err';
 
   document.getElementById('rbs-detail-title').textContent = title;
 
   const body = document.getElementById('rbs-detail-body');
   if (!lines.length) {
-    body.innerHTML = '<div class="loading-message" style="padding:20px 0">No entries found in recent log.</div>';
+    body.innerHTML = `<div class="loading-message" style="padding:20px 0">${t('rbs_no_entries')}</div>`;
   } else {
     body.innerHTML = lines.map(l => `<div class="rbs-log-line ${cls}">${escHtml(l)}</div>`).join('');
     setTimeout(() => { body.scrollTop = body.scrollHeight; }, 0);
@@ -802,7 +1015,7 @@ loadRallyBotData();
 function loadRallyBotData() {
   if (rallyLoaded) { applyRallyFilters(); return; }
   document.getElementById('rally-routes-container').innerHTML =
-    '<div class="loading-message">Loading routes…</div>';
+    `<div class="loading-message">${t('msg_loading_routes')}</div>`;
 
   fetch('/api/rally-bot/routes')
     .then(r => r.json())
@@ -819,11 +1032,21 @@ function loadRallyBotData() {
     })
     .catch(() => {
       document.getElementById('rally-routes-container').innerHTML =
-        '<div class="loading-message">Failed to load routes</div>';
+        `<div class="loading-message">${t('msg_load_failed')}</div>`;
     });
 }
 
 // Build filter options from the FULL unfiltered dataset, called once after load
+function groupCitiesByCountry(citySet) {
+  const groups = {};
+  citySet.forEach(city => {
+    const country = CITY_COUNTRY[city] || 'Other';
+    if (!groups[country]) groups[country] = [];
+    groups[country].push(city);
+  });
+  return groups;
+}
+
 function buildRallyFilterOptions() {
   const origins  = new Set();
   const dests    = new Set();
@@ -837,9 +1060,12 @@ function buildRallyFilterOptions() {
     });
   });
 
-  buildMultiSelect('ms-origin-options', [...origins].sort(),  new Set(), onFilterChange);
-  buildMultiSelect('ms-dest-options',   [...dests].sort(),    new Set(), onFilterChange);
-  buildMultiSelect('ms-model-options',  [...models].sort(),   new Set(), onFilterChange);
+  const selOrigins = new Set(getMsSelected('ms-origin-options'));
+  const selDests   = new Set(getMsSelected('ms-dest-options'));
+  const selModels  = new Set(getMsSelected('ms-model-options'));
+  buildGroupedMultiSelect('ms-origin-options', groupCitiesByCountry(origins), selOrigins, onFilterChange);
+  buildGroupedMultiSelect('ms-dest-options',   groupCitiesByCountry(dests),   selDests,   onFilterChange);
+  buildMultiSelect('ms-model-options',  [...models].sort(),  selModels,  onFilterChange);
 }
 
 // Filter client-side from the full cache
@@ -847,6 +1073,18 @@ function parseDMY(str) {
   // "DD/MM/YYYY" -> Date
   const [d, m, y] = str.split('/');
   return new Date(+y, +m - 1, +d);
+}
+
+function parseDuration(dr) {
+  // Parse the duration field: "5+3 nights" -> 8, "3 nights max" -> 3, "9 days" -> 9
+  const dur = (dr.duration || '').trim();
+  const plus = dur.match(/^(\d+)\s*\+\s*(\d+)/);
+  if (plus) return parseInt(plus[1], 10) + parseInt(plus[2], 10);
+  const single = dur.match(/^(\d+)/);
+  if (single) return parseInt(single[1], 10);
+  // fallback: compute from dates
+  const d1 = parseDMY(dr.startDate), d2 = parseDMY(dr.endDate);
+  return (d2 - d1) / 86400000;
 }
 
 function fmtDMY(date) {
@@ -884,8 +1122,7 @@ function calShiftMonth(delta, event) {
 }
 
 function renderCal() {
-  const MONTHS = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
+  const MONTHS = t('months').split(',');
   document.getElementById('cal-month-label').textContent =
     `${MONTHS[calViewMonth]} ${calViewYear}`;
 
@@ -969,10 +1206,10 @@ function calApply(event) {
     label.textContent = `${fmtDMY(calApplied.start)} → ${fmtDMY(calApplied.end)}`;
     label.classList.add('has-selection');
   } else if (calApplied.start) {
-    label.textContent = `From ${fmtDMY(calApplied.start)}`;
+    label.textContent = `${t('fltr_from')} ${fmtDMY(calApplied.start)}`;
     label.classList.add('has-selection');
   } else {
-    label.textContent = 'Any date';
+    label.textContent = t('fltr_any_date');
     label.classList.remove('has-selection');
   }
 
@@ -991,7 +1228,7 @@ function calReset() {
   calPickStart = null; calPickEnd = null;
   calApplied   = { start: null, end: null };
   const label = document.getElementById('cal-label');
-  if (label) { label.textContent = 'Any date'; label.classList.remove('has-selection'); }
+  if (label) { label.textContent = t('fltr_any_date'); label.classList.remove('has-selection'); }
 }
 
 function applyRallyFilters() {
@@ -1000,8 +1237,12 @@ function applyRallyFilters() {
   const selModels  = new Set(getMsSelected('ms-model-options'));
   const filterStart = calApplied.start;
   const filterEnd   = calApplied.end;
+  const minDays = parseInt(document.getElementById('rally-min-days').value, 10) || 0;
   const exclAmerica = document.getElementById('rally-excl-america').checked;
   const exclEurope  = document.getElementById('rally-excl-europe').checked;
+  const srcImoova      = document.getElementById('rally-src-imoova').checked;
+  const srcIndiecampers = document.getElementById('rally-src-indiecampers').checked;
+  const srcRoadsurfer   = document.getElementById('rally-src-roadsurfer').checked;
   const isAmericas  = coords => coords[1] < -30;
   const isEurope    = coords => coords[0] >= 35 && coords[0] <= 72 && coords[1] >= -15 && coords[1] <= 45;
 
@@ -1033,6 +1274,12 @@ function applyRallyFilters() {
       if (selDests.size  && !selDests.has(ret.destination))  return acc;
       if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase()))  return acc;
 
+      // Source filter
+      const url = (ret.roadsurfer_url || '').toLowerCase();
+      if (!srcImoova && url.includes('imoova')) return acc;
+      if (!srcIndiecampers && url.includes('indiecampers')) return acc;
+      if (!srcRoadsurfer && url.includes('roadsurfer')) return acc;
+
       // Continent exclusion on destination
       if (exclAmerica || exclEurope) {
         const dc = mapGeocodes[ret.destination];
@@ -1052,6 +1299,12 @@ function applyRallyFilters() {
           const beforeFilterEnd  = filterEnd   ? routeStart <= filterEnd   : true;
           return afterFilterStart && beforeFilterEnd;
         });
+        if (!dates.length) return acc;
+      }
+
+      // Min duration filter
+      if (minDays > 0) {
+        dates = dates.filter(dr => parseDuration(dr) >= minDays);
         if (!dates.length) return acc;
       }
 
@@ -1093,28 +1346,106 @@ function buildMultiSelect(optionsId, items, currentSelected, onChangeFn) {
     });
 
     label.appendChild(cb);
-    label.appendChild(document.createTextNode('\u00a0' + item));
+    label.appendChild(document.createTextNode('\u00a0' + cityT(item)));
     container.appendChild(label);
   });
   updateMsTriggerLabel(container.closest('.ms-wrapper'));
 }
 
+function buildGroupedMultiSelect(optionsId, groupedItems, currentSelected, onChangeFn) {
+  const container = document.getElementById(optionsId);
+  if (!container) return;
+  const changeHandler = typeof onChangeFn === 'function' ? onChangeFn : applyRallyFilters;
+  container.innerHTML = '';
+
+  const sortedGroups = Object.entries(groupedItems)
+    .sort((a, b) => countryT(a[0]).localeCompare(countryT(b[0])));
+
+  sortedGroups.forEach(([country, cities]) => {
+    const header = document.createElement('div');
+    header.className = 'ms-group-header';
+    header.dataset.group = country;
+
+    const headerCb = document.createElement('input');
+    headerCb.type = 'checkbox';
+
+    const headerLabel = document.createElement('span');
+    headerLabel.className = 'ms-group-name';
+    headerLabel.textContent = countryT(country);
+
+    const headerCount = document.createElement('span');
+    headerCount.className = 'ms-group-count';
+    headerCount.textContent = cities.length;
+
+    header.appendChild(headerCb);
+    header.appendChild(headerLabel);
+    header.appendChild(headerCount);
+    container.appendChild(header);
+
+    const sortedCities = [...cities].sort((a, b) => cityT(a).localeCompare(cityT(b)));
+    sortedCities.forEach(city => {
+      const label = document.createElement('label');
+      label.className = 'ms-option ms-grouped-option' + (currentSelected.has(city) ? ' checked' : '');
+      label.dataset.group = country;
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = city;
+      cb.checked = currentSelected.has(city);
+      cb.addEventListener('change', () => {
+        label.classList.toggle('checked', cb.checked);
+        syncGroupHeader(container, country);
+        updateMsTriggerLabel(container.closest('.ms-wrapper'));
+        changeHandler();
+      });
+
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode('\u00a0' + cityT(city)));
+      container.appendChild(label);
+    });
+
+    syncGroupHeader(container, country);
+
+    headerCb.addEventListener('change', () => {
+      container.querySelectorAll(`.ms-option[data-group="${country}"] input[type=checkbox]`)
+        .forEach(cb => {
+          cb.checked = headerCb.checked;
+          cb.closest('.ms-option').classList.toggle('checked', headerCb.checked);
+        });
+      updateMsTriggerLabel(container.closest('.ms-wrapper'));
+      changeHandler();
+    });
+  });
+
+  updateMsTriggerLabel(container.closest('.ms-wrapper'));
+}
+
+function syncGroupHeader(container, country) {
+  const groupCbs = container.querySelectorAll(`.ms-option[data-group="${country}"] input[type=checkbox]`);
+  const headerCb = container.querySelector(`.ms-group-header[data-group="${country}"] input`);
+  if (!headerCb || !groupCbs.length) return;
+  const allChecked = [...groupCbs].every(cb => cb.checked);
+  const someChecked = [...groupCbs].some(cb => cb.checked);
+  headerCb.checked = allChecked;
+  headerCb.indeterminate = someChecked && !allChecked;
+}
+
 function getMsSelected(optionsId) {
   const container = document.getElementById(optionsId);
   if (!container) return [];
-  return Array.from(container.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+  return Array.from(container.querySelectorAll('.ms-option input[type=checkbox]:checked')).map(cb => cb.value);
 }
 
 function updateMsTriggerLabel(wrapper) {
   if (!wrapper) return;
-  const checked = wrapper.querySelectorAll('input[type=checkbox]:checked');
+  const checked = wrapper.querySelectorAll('.ms-option input[type=checkbox]:checked');
   const label   = wrapper.querySelector('.ms-label');
   const placeholder = wrapper.dataset.placeholder || 'All';
   if (checked.length === 0) {
     label.textContent = placeholder;
     label.classList.remove('has-selection');
   } else if (checked.length === 1) {
-    label.textContent = checked[0].value;
+    label.textContent = cityT(checked[0].value);
     label.classList.add('has-selection');
   } else {
     label.textContent = `${checked.length} selected`;
@@ -1136,9 +1467,26 @@ function toggleMultiSelect(wrapperId, event) {
 
 function filterMsPanel(input) {
   const term = input.value.toLowerCase();
-  input.closest('.ms-panel').querySelectorAll('.ms-option').forEach(opt => {
-    opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
-  });
+  const optionsEl = input.closest('.ms-panel').querySelector('.ms-options');
+  const headers = optionsEl.querySelectorAll('.ms-group-header');
+
+  if (headers.length) {
+    headers.forEach(header => {
+      const group = header.dataset.group;
+      const countryMatch = header.querySelector('.ms-group-name').textContent.toLowerCase().includes(term);
+      let anyVisible = false;
+      optionsEl.querySelectorAll(`.ms-option[data-group="${group}"]`).forEach(opt => {
+        const show = !term || countryMatch || opt.textContent.toLowerCase().includes(term);
+        opt.style.display = show ? '' : 'none';
+        if (show) anyVisible = true;
+      });
+      header.style.display = anyVisible ? '' : 'none';
+    });
+  } else {
+    optionsEl.querySelectorAll('.ms-option').forEach(opt => {
+      opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
+    });
+  }
 }
 
 document.addEventListener('click', () => {
@@ -1149,13 +1497,17 @@ function clearRallyFilters() {
   ['ms-origin-options','ms-dest-options','ms-model-options'].forEach(id => {
     const cont = document.getElementById(id);
     if (!cont) return;
-    cont.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    cont.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; cb.indeterminate = false; });
     cont.querySelectorAll('.ms-option').forEach(o => o.classList.remove('checked'));
     updateMsTriggerLabel(cont.closest('.ms-wrapper'));
   });
   calReset();
   document.getElementById('rally-excl-america').checked = false;
   document.getElementById('rally-excl-europe').checked  = false;
+  document.getElementById('rally-src-imoova').checked = true;
+  document.getElementById('rally-src-indiecampers').checked = true;
+  document.getElementById('rally-src-roadsurfer').checked = true;
+  document.getElementById('rally-min-days').value = '';
   onFilterChange();
 }
 
@@ -1163,7 +1515,7 @@ function displayRallyRoutes(routes) {
   const container = document.getElementById('rally-routes-container');
 
   if (routes.length === 0) {
-    container.innerHTML = '<div class="loading-message">No routes found matching your filters</div>';
+    container.innerHTML = `<div class="loading-message">${t('msg_no_routes')}</div>`;
     return;
   }
 
@@ -1192,20 +1544,31 @@ function displayRallyRoutes(routes) {
     })
     .sort((a, b) => parseDMY(a.rows[0].dateRange.startDate) - parseDMY(b.rows[0].dateRange.startDate))
     .forEach(({ origin, destination, rows }) => {
-    const dateRows = rows.map(({ model, image, dateRange, url }) => `
+    const dateRows = rows.map(({ model, image, dateRange, url }) => {
+      let extra = '';
+      if (dateRange.duration) extra += `<span class="rc-duration">⏱ ${dateRange.duration}</span>`;
+      if (dateRange.rate != null) {
+        const sym = dateRange.currency === 'GBP' ? '£' : '€';
+        let rateStr = `${sym}${Number(dateRange.rate).toFixed(2)}/n`;
+        if (dateRange.extra_rate > 0) rateStr += ` (+${sym}${Number(dateRange.extra_rate).toFixed(2)}/n extra)`;
+        extra += `<span class="rc-rate">💰 ${rateStr}</span>`;
+      }
+      return `
       <div class="rc-date-row">
         ${image ? `<img class="rc-van-img" src="/api/rally-bot/assets/${image}" alt="${model}" title="${model}" loading="lazy">` : ''}
         ${model ? `<span class="rc-model">${model}</span>` : ''}
         <span class="rc-dates">${dateRange.startDate}<span class="rc-datesep">→</span>${dateRange.endDate}</span>
-        <a href="${url}" target="_blank" class="rc-book">Book →</a>
-      </div>`).join('');
+        ${extra}
+        <a href="${url}" target="_blank" class="rc-book">${t('btn_book')}</a>
+      </div>`;
+    }).join('');
 
     html += `
     <div class="route-card">
       <div class="rc-header">
-        <span class="rc-origin">${origin}</span>
+        <span class="rc-origin">${cityT(origin)}</span>
         <span class="rc-arrow">→</span>
-        <span class="rc-dest">${destination}</span>
+        <span class="rc-dest">${cityT(destination)}</span>
       </div>
       <div class="rc-dates-list">${dateRows}</div>
     </div>`;
@@ -1340,14 +1703,14 @@ function openTodoModal(id) {
   if (id) {
     const item = todoItems.find(t => t.id === id);
     if (!item) return;
-    heading.textContent = 'Edit Item';
+    heading.textContent = t('todo_edit');
     document.getElementById('todo-modal-title-input').value = item.title        || '';
     document.getElementById('todo-modal-due-input').value   = item.due_date     || '';
     document.getElementById('todo-modal-desc-input').value  = item.description  || '';
     document.getElementById('todo-modal-notes-input').value = item.notes        || '';
     deleteBtn.style.display = 'inline-flex';
   } else {
-    heading.textContent = 'New Item';
+    heading.textContent = t('todo_new');
     document.getElementById('todo-modal-title-input').value = '';
     document.getElementById('todo-modal-due-input').value   = '';
     document.getElementById('todo-modal-desc-input').value  = '';
@@ -1700,12 +2063,12 @@ function filesUpload(fileList) {
   fetch('/api/storage/upload', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {
-      zone.innerHTML = '<span>Drop files here to upload, or use the Upload button</span>';
+      zone.innerHTML = `<span>${t('msg_drop_files')}</span>`;
       if (data.success) loadFiles(filesCurrentPath);
       else alert('Upload error: ' + data.error);
     })
     .catch(() => {
-      zone.innerHTML = '<span>Drop files here to upload, or use the Upload button</span>';
+      zone.innerHTML = `<span>${t('msg_drop_files')}</span>`;
       alert('Upload failed');
     });
 }
@@ -1844,6 +2207,15 @@ async function applyMapFilters() {
       if (selDests.size  && !selDests.has(ret.destination)) return;
       if (selModels.size && !selModels.has((ret.model_name || '').toLowerCase())) return;
 
+      // Source filter
+      const srcImoova2      = document.getElementById('rally-src-imoova').checked;
+      const srcIndiecampers2 = document.getElementById('rally-src-indiecampers').checked;
+      const srcRoadsurfer2   = document.getElementById('rally-src-roadsurfer').checked;
+      const retUrl = (ret.roadsurfer_url || '').toLowerCase();
+      if (!srcImoova2 && retUrl.includes('imoova')) return;
+      if (!srcIndiecampers2 && retUrl.includes('indiecampers')) return;
+      if (!srcRoadsurfer2 && retUrl.includes('roadsurfer')) return;
+
       // Date filter: keep if any date range overlaps [filterStart, filterEnd]
       let dates = ret.available_dates || [];
       if (filterStart || filterEnd) {
@@ -1852,6 +2224,13 @@ async function applyMapFilters() {
           const routeEnd   = parseDMY(dr.endDate);
           return (!filterStart || routeEnd >= filterStart) && (!filterEnd || routeStart <= filterEnd);
         });
+        if (!dates.length) return;
+      }
+
+      // Min duration filter
+      const minDays = parseInt(document.getElementById('rally-min-days').value, 10) || 0;
+      if (minDays > 0) {
+        dates = dates.filter(dr => parseDuration(dr) >= minDays);
         if (!dates.length) return;
       }
 
@@ -1909,7 +2288,9 @@ async function applyMapFilters() {
 
     // Build popup content
     let popupHtml = `<div class="map-popup">`;
-    popupHtml += `<div class="map-popup-title">${pair.origin} → ${pair.destination}</div>`;
+    popupHtml += `<div class="map-popup-title">${cityT(pair.origin)} → ${cityT(pair.destination)}</div>`;
+    const multiItem = pair.items.length > 1;
+    if (multiItem) popupHtml += `<div class="map-popup-scroll">`;
     // Deduplicate images so each van photo appears once
     const seenImages = new Set();
     pair.items.forEach(item => {
@@ -1922,16 +2303,25 @@ async function applyMapFilters() {
         const bookBtn = item.url
           ? `<a href="${item.url}" target="_blank" class="rc-book map-popup-book">Book →</a>`
           : '';
-        popupHtml += `<div class="map-popup-date">📅 ${dr.startDate} → ${dr.endDate}${bookBtn}</div>`;
+        let extra = '';
+        if (dr.duration) extra += ` ⏱ ${dr.duration}`;
+        if (dr.rate != null) {
+          const sym = dr.currency === 'GBP' ? '£' : '€';
+          let rateStr = `${sym}${Number(dr.rate).toFixed(2)}/n`;
+          if (dr.extra_rate > 0) rateStr += ` (+${sym}${Number(dr.extra_rate).toFixed(2)}/n)`;
+          extra += ` 💰 ${rateStr}`;
+        }
+        popupHtml += `<div class="map-popup-date">📅 ${dr.startDate} → ${dr.endDate}${extra}${bookBtn}</div>`;
       });
     });
+    if (multiItem) popupHtml += `</div>`; // close map-popup-scroll
     popupHtml += `</div>`;
 
     // Visible line
     const line = L.polyline([oc, dc], { color, weight: 2.5, opacity: 0.8 });
     // Wide transparent hit-area on top so clicks are easier
     const hitLine = L.polyline([oc, dc], { color: 'transparent', weight: 18, opacity: 0 });
-    const popup = L.popup({ maxWidth: 300 }).setContent(popupHtml);
+    const popup = L.popup({ maxWidth: 300, maxHeight: 400 }).setContent(popupHtml);
     hitLine.bindPopup(popup);
     // Hover highlight
     hitLine.on('mouseover', () => line.setStyle({ weight: 5, opacity: 1 }));
@@ -2080,3 +2470,6 @@ function mapCalReset() {
   const label = document.getElementById('map-cal-label');
   if (label) { label.textContent = 'Any date'; label.classList.remove('has-selection'); }
 }
+
+// Apply language after all variables are initialised
+applyLang();

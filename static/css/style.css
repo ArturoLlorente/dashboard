@@ -393,6 +393,24 @@ input[type="range"]::-moz-range-thumb{
 
 .filter-group-btn{justify-content:flex-end;align-self:flex-end;flex:0}
 
+.min-days-input-wrap{
+  display:flex;align-items:center;gap:6px;
+  padding:0 6px 0 12px;border-radius:8px;
+  border:1px solid rgba(148,163,184,.22);
+  background:rgba(2,6,23,.55);
+  height:38px;
+}
+.min-days-input{
+  width:50px;background:transparent;border:none;color:var(--text);
+  font-size:13px;outline:none;text-align:center;
+  -moz-appearance:textfield;
+}
+.min-days-input::-webkit-outer-spin-button,
+.min-days-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.min-days-suffix{font-size:12px;color:var(--muted);flex-shrink:0}
+.min-days-apply{padding:4px 10px;border-radius:6px;border:1px solid rgba(56,189,248,.28);background:rgba(56,189,248,.10);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
+.min-days-apply:hover{background:rgba(56,189,248,.2)}
+
 .filter-label{
   font-size:11px;letter-spacing:.8px;text-transform:uppercase;
   color:var(--muted);font-weight:900
@@ -412,6 +430,11 @@ input[type="range"]::-moz-range-thumb{
 /* Multi-select dropdown */
 .ms-wrapper{
   position:relative;
+  z-index:1;
+}
+
+.ms-wrapper.open{
+  z-index:200;
 }
 
 .ms-trigger{
@@ -489,6 +512,25 @@ input[type="range"]::-moz-range-thumb{
 }
 
 .ms-option.checked{color:var(--text)}
+
+/* ---- Grouped multiselect ---- */
+.ms-group-header{
+  display:flex;align-items:center;gap:9px;padding:7px 12px;
+  cursor:pointer;font-size:12px;font-weight:800;letter-spacing:.3px;
+  color:var(--accent2);background:rgba(56,189,248,.06);
+  border-top:1px solid rgba(148,163,184,.08);
+  position:sticky;top:0;z-index:1;
+}
+.ms-group-header:first-child{border-top:none}
+.ms-group-header input[type=checkbox]{
+  accent-color:var(--accent2);width:14px;height:14px;cursor:pointer;flex-shrink:0;
+}
+.ms-group-name{flex:1}
+.ms-group-count{
+  font-size:10px;color:var(--muted);font-weight:600;
+  background:rgba(148,163,184,.12);border-radius:8px;padding:1px 7px;
+}
+.ms-grouped-option{padding-left:28px !important}
 
 /* ---- Calendar picker ---- */
 .cal-panel{
@@ -647,6 +689,13 @@ input[type="range"]::-moz-range-thumb{
   font-size:12px;color:var(--muted);white-space:nowrap;
 }
 .rc-datesep{color:rgba(148,163,184,.45);margin:0 5px}
+
+.rc-duration{
+  font-size:11px;color:var(--text-dim);white-space:nowrap;
+}
+.rc-rate{
+  font-size:11px;color:var(--accent2);white-space:nowrap;
+}
 
 .rc-book{
   margin-left:auto;
@@ -807,7 +856,8 @@ input[type="range"]::-moz-range-thumb{
   .filter-group-btn .btn{width:100%}
 
   /* multi-select dropdowns: full width, above bottom nav */
-  .ms-wrapper{width:100%}
+  .ms-wrapper{width:100%;position:relative;z-index:1}
+  .ms-wrapper.open{z-index:400}
   .ms-trigger{width:100%}
   .ms-panel{
     width:100% !important;
@@ -1386,6 +1436,12 @@ input[type="date"].todo-input::-webkit-calendar-picker-indicator{
 .map-exclude-toggle:hover span{ color:var(--text); }
 .map-exclude-toggle input:checked + span{ color:var(--accent); font-weight:600; }
 
+/* ---- Language picker ---- */
+.lang-picker{ display:flex; gap:3px; flex-shrink:0; }
+.lang-btn{ background:var(--card-bg,rgba(2,6,23,.55)); border:1px solid var(--border); border-radius:6px; color:var(--muted); padding:4px 10px; font-size:.78rem; font-weight:800; cursor:pointer; letter-spacing:.5px; transition:background .15s,color .15s,border-color .15s; }
+.lang-btn:hover{ background:rgba(99,179,237,.1); color:var(--text); border-color:rgba(99,179,237,.4); }
+.lang-btn.active{ background:rgba(99,179,237,.15); color:var(--accent); border-color:var(--accent); }
+
 /* ---- View toggle (List / Map) ---- */
 .view-toggle{ display:flex; gap:6px; flex-shrink:0; }
 .view-btn{ background:var(--card-bg); border:1px solid var(--border); border-radius:6px; color:var(--muted); padding:5px 13px; font-size:.82rem; cursor:pointer; transition:background .15s,color .15s,border-color .15s; }
@@ -1396,6 +1452,7 @@ input[type="date"].todo-input::-webkit-calendar-picker-indicator{
 #map-container{ height:560px; border-radius:10px; overflow:hidden; border:1px solid var(--border); position:relative; z-index:0; }
 /* Ensure map filter dropdowns appear above the Leaflet layers */
 #window-rally .ms-wrapper{ position:relative; z-index:1000; }
+#window-rally .ms-wrapper.open{ z-index:1010; }
 #window-rally .ms-panel{ z-index:1001; }
 .map-date-input{
   background:var(--card-bg); border:1px solid var(--border); border-radius:6px;
@@ -1408,6 +1465,9 @@ input[type="date"].todo-input::-webkit-calendar-picker-indicator{
 .leaflet-popup-tip{ background:var(--card-bg,#1e293b); }
 .leaflet-popup-close-button{ color:var(--muted,#94a3b8) !important; }
 .map-popup{ font-size:.82rem; min-width:160px; }
+.map-popup-scroll{ max-height:260px; overflow-y:auto; padding-right:2px; margin-top:2px; }
+.map-popup-scroll::-webkit-scrollbar{ width:4px; }
+.map-popup-scroll::-webkit-scrollbar-thumb{ background:rgba(148,163,184,.3); border-radius:2px; }
 .map-popup-title{ font-weight:700; font-size:.9rem; color:var(--accent,#63b3ed); margin-bottom:6px; border-bottom:1px solid var(--border,rgba(255,255,255,.1)); padding-bottom:4px; }
 .map-popup-model{ font-weight:600; color:var(--text,#e2e8f0); margin-top:6px; }
 .map-popup-date{ color:var(--muted,#94a3b8); padding-left:12px; }

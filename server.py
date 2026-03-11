@@ -738,6 +738,35 @@ def rally_bot_routes():
         with open(rally_file, 'r') as f:
             all_routes = json.load(f)
         
+        # Build image lookup from models that have images, then fill gaps
+        img_lookup = {}
+        for route in all_routes:
+            for ret in route.get('returns', []):
+                mi = ret.get('model_image', '')
+                if mi:
+                    img_lookup[ret.get('model_name', '')] = mi
+        # Map short roadsurfer names to a known image via keyword matching
+        _FALLBACK_KEYWORDS = {
+            'active bunk': 'Eu Active Bunk 4 Auto Base',
+            'active long': 'Active Long 2',
+            'active poptop': 'Eu Active Poptop 4 Auto Select',
+            'active standard': 'Eu Active Standard 2 Auto Select',
+            'california grand': 'VW Grand California',
+            'california standard': 'Eu California Standard 4 Auto Base',
+            'comfort compact': 'Comfort Compact',
+            'comfort family': 'EU Comfort Family 6 Auto Select',
+            'comfort long': 'EU Comfort Long 4 Auto Select',
+            'comfort space': 'Eu Comfort Space 4 Auto Select',
+            'comfort standard': 'Eu Comfort Standard 5 Auto Select',
+        }
+        fallback_map = {k: img_lookup.get(v, '') for k, v in _FALLBACK_KEYWORDS.items()}
+        for route in all_routes:
+            for ret in route.get('returns', []):
+                if not ret.get('model_image'):
+                    key = ret.get('model_name', '').lower()
+                    if key in fallback_map and fallback_map[key]:
+                        ret['model_image'] = fallback_map[key]
+
         # Get filter parameters (comma-separated multi-values supported)
         def parse_multi(param):
             raw = request.args.get(param, '').strip()

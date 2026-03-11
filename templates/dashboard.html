@@ -17,8 +17,8 @@
         <div class="title-row">
           <button class="admin-lock-btn" id="admin-lock-btn" onclick="toggleAdminModal()" title="Admin access">🔒</button>
           <div>
-            <h1>Server Dashboard</h1>
-            <div class="subtitle">Real-time system monitoring & control</div>
+            <h1 data-i18n="app_title">Server Dashboard</h1>
+            <div class="subtitle" data-i18n="app_subtitle">Real-time system monitoring & control</div>
           </div>
         </div>
       </div>
@@ -57,43 +57,47 @@
           <span class="dot" id="status-dot"></span>
           <span id="last-update">Never</span>
         </div>
+        <div class="lang-picker">
+          <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+          <button class="lang-btn" data-lang="es" onclick="setLanguage('es')">ES</button>
+        </div>
       </div>
     </div>
 
     <div class="main-layout">
       <!-- Sidebar Navigation -->
       <div class="sidebar">
-        <div class="sidebar-title">Navigation</div>
+        <div class="sidebar-title" data-i18n="nav_sidebar">Navigation</div>
         <!-- Public nav items -->
         <div class="nav-item active" data-window="rally" onclick="switchWindow('rally')">
           <span class="nav-icon">🚐</span>
-          <span>Rally Bot</span>
+          <span data-i18n="nav_rally">Rally Bot</span>
         </div>
         <div class="nav-item" data-window="map" onclick="switchWindow('map')">
           <span class="nav-icon">🗺️</span>
-          <span>Map</span>
+          <span data-i18n="nav_map">Map</span>
         </div>
         <!-- Admin-only nav items (hidden until unlocked) -->
-        <div class="nav-admin-divider" id="nav-admin-divider">Admin</div>
+        <div class="nav-admin-divider" id="nav-admin-divider" data-i18n="nav_admin">Admin</div>
         <div class="nav-item nav-admin-item" data-window="rally-stats" onclick="switchWindow('rally-stats')">
           <span class="nav-icon">📈</span>
-          <span>Rally Stats</span>
+          <span data-i18n="nav_rally_stats">Rally Stats</span>
         </div>
         <div class="nav-item nav-admin-item" data-window="metrics" onclick="switchWindow('metrics')">
           <span class="nav-icon">📊</span>
-          <span>System Metrics</span>
+          <span data-i18n="nav_metrics">System Metrics</span>
         </div>
         <div class="nav-item nav-admin-item" data-window="controls" onclick="switchWindow('controls')">
           <span class="nav-icon">⚙️</span>
-          <span>Controls & Services</span>
+          <span data-i18n="nav_controls">Controls & Services</span>
         </div>
         <div class="nav-item nav-admin-item" data-window="todo" onclick="switchWindow('todo')">
           <span class="nav-icon">✅</span>
-          <span>To-Do</span>
+          <span data-i18n="nav_todo">To-Do</span>
         </div>
         <div class="nav-item nav-admin-item" data-window="files" onclick="switchWindow('files')">
           <span class="nav-icon">📁</span>
-          <span>Files</span>
+          <span data-i18n="nav_files">Files</span>
         </div>
       </div>
 
@@ -102,18 +106,18 @@
         <!-- System Metrics Window -->
         <div class="window" id="window-metrics">
           <div class="section">
-            <div class="section-title">System Metrics</div>
+            <div class="section-title" data-i18n="win_metrics">System Metrics</div>
             <div class="grid">
               <!-- CPU (historic line) -->
               <div class="card">
-                <h2><span>CPU Usage</span><span class="pill ok" id="cpu-pill">OK</span></h2>
+                <h2><span data-i18n="lbl_cpu_usage">CPU Usage</span><span class="pill ok" id="cpu-pill">OK</span></h2>
                 <div class="kpi"><div class="value" id="cpu-kpi">--</div><div class="unit">%</div></div>
                 <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
               </div>
 
               <!-- Memory (historic line) -->
               <div class="card">
-                <h2><span>Memory</span><span class="pill ok" id="mem-pill">OK</span></h2>
+                <h2><span data-i18n="lbl_memory">Memory</span><span class="pill ok" id="mem-pill">OK</span></h2>
                 <div class="kpi"><div class="value" id="mem-kpi">--</div><div class="unit">%</div></div>
                 <div class="chart-wrap"><canvas id="memChart"></canvas></div>
                 <div class="progress"><div id="mem-progress"></div></div>
@@ -122,14 +126,14 @@
 
               <!-- Temperature (historic line) -->
               <div class="card">
-                <h2><span>Temperature</span><span class="pill ok" id="temp-pill">OK</span></h2>
+                <h2><span data-i18n="lbl_temperature">Temperature</span><span class="pill ok" id="temp-pill">OK</span></h2>
                 <div class="kpi"><div class="value" id="temp-kpi">--</div><div class="unit">°C</div></div>
                 <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
               </div>
 
               <!-- Battery History (historic line) -->
               <div class="card">
-                <h2><span>Battery History</span><span class="pill ok" id="battery-pill">HISTORY</span></h2>
+                <h2><span data-i18n="lbl_battery_history">Battery History</span><span class="pill ok" id="battery-pill">HISTORY</span></h2>
                 <div class="kpi"><div class="value" id="battery-hist-kpi">--</div><div class="unit">%</div></div>
                 <div style="font-size:12px;color:var(--muted);margin:-6px 0 8px 0;" id="battery-estimate-card"></div>
                 <div class="chart-wrap"><canvas id="batteryChart"></canvas></div>
@@ -137,7 +141,7 @@
 
               <!-- Disk (speedometer-like gauge) -->
               <div class="card">
-                <h2><span>Disk</span><span class="pill ok" id="disk-pill">OK</span></h2>
+                <h2><span data-i18n="lbl_disk">Disk</span><span class="pill ok" id="disk-pill">OK</span></h2>
                 <div class="chart-wrap gauge-wrap" style="height:220px; position:relative; overflow:visible;">
                   <canvas id="diskGauge"></canvas>
                   <div class="gauge-center">
@@ -149,9 +153,9 @@
 
               <!-- Network (rate line KB/s) -->
               <div class="card">
-                <h2><span>Network</span><span class="pill ok" id="net-pill">OK</span></h2>
+                <h2><span data-i18n="lbl_network">Network</span><span class="pill ok" id="net-pill">OK</span></h2>
                 <div class="rows">
-                  <div class="stat"><span class="stat-label">IP address</span><span class="stat-value" id="net-ip">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_ip_address">IP address</span><span class="stat-value" id="net-ip">--</span></div>
                 </div>
                 <div class="chart-wrap" style="margin-top:10px"><canvas id="netChart"></canvas></div>
                 <div class="rows" id="network-interfaces" style="margin-top:10px"></div>
@@ -163,29 +167,29 @@
         <!-- Controls & Services Window -->
         <div class="window" id="window-controls">
           <div class="section">
-            <div class="section-title">Controls & Services</div>
+            <div class="section-title" data-i18n="win_controls">Controls & Services</div>
             <div class="grid">
 
               <!-- IPTV -->
               <div class="card">
                 <h2><span>IPTV</span><span class="pill ok" id="iptv-pill">OK</span></h2>
                 <div id="iptv-content" class="rows">
-                  <div class="stat"><span class="stat-label">Username</span><span class="stat-value" id="iptv-username">--</span></div>
-                  <div class="stat"><span class="stat-label">Active / Max</span><span class="stat-value" id="iptv-connections">--</span></div>
-                  <div class="stat"><span class="stat-label">Status</span><span class="stat-value" id="iptv-status">--</span></div>
-                  <div class="stat"><span class="stat-label">Expires</span><span class="stat-value" id="iptv-expires">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_username">Username</span><span class="stat-value" id="iptv-username">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_active_max">Active / Max</span><span class="stat-value" id="iptv-connections">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_status">Status</span><span class="stat-value" id="iptv-status">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_expires">Expires</span><span class="stat-value" id="iptv-expires">--</span></div>
                 </div>
               </div>
 
               <!-- Brightness -->
               <div class="card">
-                <h2><span>Brightness</span><span class="pill ok" id="bright-pill">CONTROL</span></h2>
+                <h2><span data-i18n="lbl_brightness">Brightness</span><span class="pill ok" id="bright-pill">CONTROL</span></h2>
                 <div class="kpi"><div class="value" id="brightness-kpi">--</div><div class="unit">%</div></div>
                 <input type="range" min="0" max="100" value="50" id="brightness-slider">
                 <div class="btnrow">
-                  <button class="btn" onclick="setBrightness(0)">Min</button>
+                  <button class="btn" data-i18n="btn_min" onclick="setBrightness(0)">Min</button>
                   <button class="btn" onclick="setBrightness(50)">50%</button>
-                  <button class="btn" onclick="setBrightness(100)">Max</button>
+                  <button class="btn" data-i18n="btn_max" onclick="setBrightness(100)">Max</button>
                 </div>
               </div>
             </div>
@@ -198,15 +202,15 @@
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <div class="section-title" style="margin-bottom:0">Rally Bot</div>
               <div class="view-toggle">
-                <button class="view-btn active" id="btn-view-list" onclick="setRallyView('list')">☰ List</button>
-                <button class="view-btn" id="btn-view-map" onclick="setRallyView('map')">🗺️ Map</button>
+                <button class="view-btn active" id="btn-view-list" data-i18n="btn_list_view" onclick="setRallyView('list')">☰ List</button>
+                <button class="view-btn" id="btn-view-map" data-i18n="btn_map_view" onclick="setRallyView('map')">🗺️ Map</button>
               </div>
             </div>
 
             <!-- Filters -->
             <div class="rally-filters">
               <div class="filter-group">
-                <label class="filter-label">Origin Station</label>
+                <label class="filter-label" data-i18n="fltr_origin">Origin Station</label>
                 <div class="ms-wrapper" id="ms-origin" data-placeholder="All Origins">
                   <button class="ms-trigger" onclick="toggleMultiSelect('ms-origin', event)">
                     <span class="ms-label">All Origins</span>
@@ -219,7 +223,7 @@
                 </div>
               </div>
               <div class="filter-group">
-                <label class="filter-label">Destination</label>
+                <label class="filter-label" data-i18n="fltr_destination">Destination</label>
                 <div class="ms-wrapper" id="ms-dest" data-placeholder="All Destinations">
                   <button class="ms-trigger" onclick="toggleMultiSelect('ms-dest', event)">
                     <span class="ms-label">All Destinations</span>
@@ -232,7 +236,7 @@
                 </div>
               </div>
               <div class="filter-group">
-                <label class="filter-label">Camper Model</label>
+                <label class="filter-label" data-i18n="fltr_model">Camper Model</label>
                 <div class="ms-wrapper" id="ms-model" data-placeholder="All Models">
                   <button class="ms-trigger" onclick="toggleMultiSelect('ms-model', event)">
                     <span class="ms-label">All Models</span>
@@ -245,7 +249,7 @@
                 </div>
               </div>
               <div class="filter-group" style="flex:2;min-width:220px">
-                <label class="filter-label">Date Range</label>
+                <label class="filter-label" data-i18n="fltr_date">Date Range</label>
                 <div class="ms-wrapper" id="cal-wrapper">
                   <button class="ms-trigger" onclick="toggleCalendar(event)">
                     <span class="ms-label" id="cal-label">Any date</span>
@@ -258,14 +262,14 @@
                       <button class="cal-nav" onclick="calShiftMonth(1,event)">&#8250;</button>
                     </div>
                     <div class="cal-weekdays">
-                      <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+                      <span data-i18n="wd_mo">Mo</span><span data-i18n="wd_tu">Tu</span><span data-i18n="wd_we">We</span><span data-i18n="wd_th">Th</span><span data-i18n="wd_fr">Fr</span><span data-i18n="wd_sa">Sa</span><span data-i18n="wd_su">Su</span>
                     </div>
                     <div class="cal-days" id="cal-days"></div>
                     <div class="cal-footer">
                       <span class="cal-selection-txt" id="cal-selection-txt"></span>
                       <div class="cal-footer-btns">
-                        <button class="btn cal-clear-btn" onclick="calClear(event)">Clear</button>
-                        <button class="btn cal-apply-btn" onclick="calApply(event)">Apply</button>
+                        <button class="btn cal-clear-btn" data-i18n="btn_clear" onclick="calClear(event)">Clear</button>
+                        <button class="btn cal-apply-btn" data-i18n="btn_apply" onclick="calApply(event)">Apply</button>
                       </div>
                     </div>
                   </div>
@@ -274,26 +278,51 @@
               <div class="filter-group filter-group-btn" style="flex-direction:column;align-items:flex-start;gap:6px;justify-content:center">
                 <label class="map-exclude-toggle">
                   <input type="checkbox" id="rally-excl-america" onchange="onFilterChange()">
-                  <span>Exclude Americas</span>
+                  <span data-i18n="fltr_excl_americas">Exclude Americas</span>
                 </label>
                 <label class="map-exclude-toggle">
                   <input type="checkbox" id="rally-excl-europe" onchange="onFilterChange()">
-                  <span>Exclude Europe</span>
+                  <span data-i18n="fltr_excl_europe">Exclude Europe</span>
                 </label>
               </div>
+              <div class="filter-group" style="flex:0">
+                <label class="filter-label" data-i18n="fltr_source">Source</label>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <label class="map-exclude-toggle">
+                    <input type="checkbox" id="rally-src-imoova" checked onchange="onFilterChange()">
+                    <span>Imoova (often cancel)</span>
+                  </label>
+                  <label class="map-exclude-toggle">
+                    <input type="checkbox" id="rally-src-indiecampers" checked onchange="onFilterChange()">
+                    <span>Indiecampers</span>
+                  </label>
+                  <label class="map-exclude-toggle">
+                    <input type="checkbox" id="rally-src-roadsurfer" checked onchange="onFilterChange()">
+                    <span>Roadsurfer</span>
+                  </label>
+                </div>
+              </div>
+              <div class="filter-group" style="flex:0;min-width:180px">
+                <label class="filter-label" data-i18n="fltr_min_days">Min Days</label>
+                <div class="min-days-input-wrap">
+                  <input type="number" class="min-days-input" id="rally-min-days" min="0" step="1" placeholder="0">
+                  <span class="min-days-suffix" data-i18n="fltr_days_suffix">days</span>
+                  <button class="min-days-apply" data-i18n="btn_apply" onclick="onFilterChange()">Apply</button>
+                </div>
+              </div>
               <div class="filter-group filter-group-btn">
-                <button class="btn" onclick="clearRallyFilters()">Clear All</button>
+                <button class="btn" data-i18n="btn_clear_all" onclick="clearRallyFilters()">Clear All</button>
               </div>
             </div><!-- end .rally-filters -->
 
             <div class="rally-stats" id="rally-list-stats">
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="rally-total-routes">--</div>
-                <div class="rally-stat-label">Total Routes</div>
+                <div class="rally-stat-label" data-i18n="stat_total_routes">Total Routes</div>
               </div>
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="rally-total-returns">--</div>
-                <div class="rally-stat-label">Available Returns</div>
+                <div class="rally-stat-label" data-i18n="stat_available_returns">Available Returns</div>
               </div>
             </div>
 
@@ -301,17 +330,17 @@
             <div class="rally-stats" id="rally-map-stats" style="display:none;margin-bottom:10px">
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="map-route-count">--</div>
-                <div class="rally-stat-label">Visible Routes</div>
+                <div class="rally-stat-label" data-i18n="stat_visible_routes">Visible Routes</div>
               </div>
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="map-missing-count">--</div>
-                <div class="rally-stat-label">Unknown Locations</div>
+                <div class="rally-stat-label" data-i18n="stat_unknown_locs">Unknown Locations</div>
               </div>
             </div>
 
             <!-- List view -->
             <div id="rally-routes-container" class="rally-routes">
-              <div class="loading-message">Loading routes...</div>
+              <div class="loading-message" data-i18n="msg_loading_routes">Loading routes...</div>
             </div>
 
             <!-- Map view (shown in map view) -->
@@ -322,41 +351,41 @@
         <!-- Rally Bot Stats Window (admin-only) -->
         <div class="window" id="window-rally-stats">
           <div class="section">
-            <div class="section-title">Rally Bot Stats</div>
+            <div class="section-title" data-i18n="win_rally_stats">Rally Bot Stats</div>
 
             <!-- Summary stat cards -->
             <div class="rally-stats" id="rbs-summary">
               <div class="rally-stat-card">
                 <div class="rally-stat-value" id="rbs-notifs">--</div>
-                <div class="rally-stat-label">Notifications Sent</div>
+                <div class="rally-stat-label" data-i18n="stat_notifs_sent">Notifications Sent</div>
               </div>
-              <div class="rally-stat-card rbs-warn-card rbs-clickable" onclick="rbsShowDetail('warn')" title="Click to see warning messages">
+              <div class="rally-stat-card rbs-warn-card rbs-clickable" onclick="rbsShowDetail('warn')">
                 <div class="rally-stat-value rbs-warn-value" id="rbs-warnings">--</div>
-                <div class="rally-stat-label">Recent Warnings</div>
+                <div class="rally-stat-label" data-i18n="stat_recent_warn">Recent Warnings</div>
               </div>
-              <div class="rally-stat-card rbs-err-card rbs-clickable" onclick="rbsShowDetail('err')" title="Click to see error messages">
+              <div class="rally-stat-card rbs-err-card rbs-clickable" onclick="rbsShowDetail('err')">
                 <div class="rally-stat-value rbs-err-value" id="rbs-errors">--</div>
-                <div class="rally-stat-label">Recent Errors</div>
+                <div class="rally-stat-label" data-i18n="stat_recent_err">Recent Errors</div>
               </div>
             </div>
 
             <div class="rbs-grid">
               <!-- Data info -->
               <div class="card">
-                <h2><span>Data Overview</span></h2>
+                <h2><span data-i18n="lbl_data_overview">Data Overview</span></h2>
                 <div class="rows">
-                  <div class="stat"><span class="stat-label">Last refreshed</span><span class="stat-value" id="rbs-freshness">--</span></div>
-                  <div class="stat"><span class="stat-label">Earliest date</span><span class="stat-value" id="rbs-earliest">--</span></div>
-                  <div class="stat"><span class="stat-label">Latest date</span><span class="stat-value" id="rbs-latest">--</span></div>
-                  <div class="stat"><span class="stat-label">Log file size</span><span class="stat-value" id="rbs-logsize">--</span></div>
-                  <div class="stat"><span class="stat-label">Last log entry</span><span class="stat-value" id="rbs-lastlog">--</span></div>
-                  <div class="stat"><span class="stat-label">Favorites saved</span><span class="stat-value" id="rbs-favs">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_last_refreshed">Last refreshed</span><span class="stat-value" id="rbs-freshness">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_earliest_date">Earliest date</span><span class="stat-value" id="rbs-earliest">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_latest_date">Latest date</span><span class="stat-value" id="rbs-latest">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_log_size">Log file size</span><span class="stat-value" id="rbs-logsize">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_last_log">Last log entry</span><span class="stat-value" id="rbs-lastlog">--</span></div>
+                  <div class="stat"><span class="stat-label" data-i18n="lbl_favs">Favorites saved</span><span class="stat-value" id="rbs-favs">--</span></div>
                 </div>
               </div>
 
               <!-- Model breakdown -->
               <div class="card">
-                <h2><span>Van Models</span></h2>
+                <h2><span data-i18n="lbl_van_models">Van Models</span></h2>
                 <div id="rbs-models" class="rbs-table-wrap">
                   <div class="loading-message">Loading…</div>
                 </div>
@@ -364,7 +393,7 @@
 
               <!-- Top origins -->
               <div class="card">
-                <h2><span>Top Origins</span></h2>
+                <h2><span data-i18n="lbl_top_origins">Top Origins</span></h2>
                 <div id="rbs-top-origins" class="rbs-table-wrap">
                   <div class="loading-message">Loading…</div>
                 </div>
@@ -373,7 +402,7 @@
 
             <!-- Log tail -->
             <div class="card" style="margin-top:16px">
-              <h2><span>Recent Log</span>
+              <h2><span data-i18n="lbl_recent_log">Recent Log</span>
                 <button class="btn" style="margin-left:auto;font-size:11px;padding:3px 10px" onclick="loadRallyStats()">↻ Refresh</button>
               </h2>
               <div id="rbs-log" class="rbs-log"><div class="loading-message">Loading…</div></div>
@@ -395,10 +424,10 @@
         <!-- To-Do Window -->
         <div class="window" id="window-todo">
           <div class="section">
-            <div class="section-title">To-Do List</div>
+            <div class="section-title" data-i18n="win_todo">To-Do List</div>
 
             <div class="todo-toolbar">
-              <button class="btn todo-add-btn" onclick="openTodoModal(null)">+ Add Item</button>
+              <button class="btn todo-add-btn" data-i18n="btn_add_item" onclick="openTodoModal(null)">+ Add Item</button>
             </div>
 
             <!-- Open items (drag-and-drop) -->
@@ -406,7 +435,7 @@
 
             <!-- Archive toggle -->
             <div class="todo-archive-toggle" onclick="toggleTodoArchive()">
-              <span>Archived</span>
+              <span data-i18n="lbl_archived">Archived</span>
               <span class="todo-archive-count" id="todo-archive-count">0</span>
               <span class="todo-archive-chevron" id="todo-archive-chevron">▾</span>
             </div>
@@ -420,19 +449,19 @@
         <!-- File Storage Window -->
         <div class="window" id="window-files">
           <div class="section">
-            <div class="section-title">File Storage</div>
+            <div class="section-title" data-i18n="win_files">File Storage</div>
             <div class="files-toolbar">
               <div class="files-breadcrumb" id="files-breadcrumb"></div>
               <div style="display:flex;gap:8px;flex-shrink:0">
-                <button class="btn" onclick="filesPromptFolder()">+ Folder</button>
+                <button class="btn" data-i18n="btn_new_folder" onclick="filesPromptFolder()">+ Folder</button>
                 <label class="btn" style="cursor:pointer;margin:0;display:inline-flex;align-items:center">
-                  ⬆ Upload
+                  <span data-i18n="btn_upload">⬆ Upload</span>
                   <input type="file" id="files-upload-input" multiple style="display:none" onchange="filesHandleInput(this)">
                 </label>
               </div>
             </div>
             <div class="files-drop-zone" id="files-drop-zone">
-              <span>Drop files here to upload, or use the Upload button</span>
+              <span data-i18n="msg_drop_files">Drop files here to upload, or use the Upload button</span>
             </div>
             <div class="files-grid" id="files-grid"></div>
           </div>
@@ -445,49 +474,49 @@
     <div class="todo-modal-overlay" id="todo-modal-overlay" onclick="closeTodoModalOverlay(event)">
       <div class="todo-modal" id="todo-modal">
         <div class="todo-modal-header">
-          <span class="todo-modal-heading" id="todo-modal-heading">New Item</span>
+          <span class="todo-modal-heading" id="todo-modal-heading" data-i18n="todo_new">New Item</span>
           <button class="todo-modal-close" onclick="closeTodoModal()">✕</button>
         </div>
         <div class="todo-modal-body">
           <input type="hidden" id="todo-modal-id" />
           <div class="todo-field">
-            <label class="todo-label">Title <span style="color:var(--bad)">*</span></label>
-            <input type="text" class="todo-input" id="todo-modal-title-input" placeholder="Task title…" />
+            <label class="todo-label"><span data-i18n="lbl_title">Title</span> <span style="color:var(--bad)">*</span></label>
+            <input type="text" class="todo-input" id="todo-modal-title-input" data-i18n-placeholder="ph_task_title" placeholder="Task title…" />
           </div>
           <div class="todo-field">
-            <label class="todo-label">Due Date</label>
+            <label class="todo-label" data-i18n="lbl_due_date">Due Date</label>
             <input type="date" class="todo-input" id="todo-modal-due-input" />
           </div>
           <div class="todo-field">
-            <label class="todo-label">Description</label>
-            <textarea class="todo-textarea" id="todo-modal-desc-input" rows="4" placeholder="Detailed description…"></textarea>
+            <label class="todo-label" data-i18n="lbl_description">Description</label>
+            <textarea class="todo-textarea" id="todo-modal-desc-input" rows="4" data-i18n-placeholder="ph_description" placeholder="Detailed description…"></textarea>
           </div>
           <div class="todo-field">
-            <label class="todo-label">Additional Notes</label>
-            <textarea class="todo-textarea" id="todo-modal-notes-input" rows="3" placeholder="Additional notes…"></textarea>
+            <label class="todo-label" data-i18n="lbl_notes">Additional Notes</label>
+            <textarea class="todo-textarea" id="todo-modal-notes-input" rows="3" data-i18n-placeholder="ph_notes" placeholder="Additional notes…"></textarea>
           </div>
         </div>
         <div class="todo-modal-footer">
-          <button class="btn todo-modal-delete-btn" id="todo-modal-delete-btn" onclick="deleteTodoFromModal()" style="display:none;">Delete</button>
+          <button class="btn todo-modal-delete-btn" id="todo-modal-delete-btn" data-i18n="btn_delete" onclick="deleteTodoFromModal()" style="display:none;">Delete</button>
           <div style="flex:1"></div>
-          <button class="btn" onclick="closeTodoModal()">Cancel</button>
-          <button class="btn todo-modal-save-btn" onclick="saveTodoModal()">Save</button>
+          <button class="btn" data-i18n="btn_cancel" onclick="closeTodoModal()">Cancel</button>
+          <button class="btn todo-modal-save-btn" data-i18n="btn_save" onclick="saveTodoModal()">Save</button>
         </div>
       </div>
     </div>
 
-    <div class="footer">Auto-refresh every 5 seconds</div>
+    <div class="footer" data-i18n="footer_refresh">Auto-refresh every 5 seconds</div>
   </div>
 
   <!-- Admin authentication modal -->
   <div class="admin-modal-overlay" id="admin-modal-overlay" onclick="closeAdminModalOverlay(event)">
     <div class="admin-modal">
       <div class="admin-modal-icon" id="admin-modal-icon">🔒</div>
-      <div class="admin-modal-title" id="admin-modal-title">Admin Access</div>
-      <div class="admin-modal-sub">Enter the admin password to unlock restricted features</div>
+      <div class="admin-modal-title" id="admin-modal-title" data-i18n="admin_title">Admin Access</div>
+      <div class="admin-modal-sub" data-i18n="admin_sub">Enter the admin password to unlock restricted features</div>
       <form id="admin-login-form" onsubmit="submitAdminPassword(event)" autocomplete="off">
         <input class="term-password-input" type="password" id="admin-password-input" placeholder="Password" />
-        <button class="btn term-login-btn" type="submit">Unlock</button>
+        <button class="btn term-login-btn" data-i18n="btn_unlock" type="submit">Unlock</button>
       </form>
       <div id="admin-login-error" class="term-login-error"></div>
     </div>
