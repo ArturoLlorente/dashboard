@@ -21,6 +21,7 @@ const TRANSLATIONS = {
     fltr_date:'Date Range', fltr_any_date:'Any date', fltr_from:'From',
     fltr_excl_americas:'Exclude Americas', fltr_excl_europe:'Exclude Europe',
     fltr_min_days:'Min Days', fltr_days_suffix:'days',
+    fltr_max_dist:'Max Distance', fltr_dist_suffix:'km',
     fltr_source:'Source',
     btn_save_preset:'Save Filter', btn_saved_presets:'Saved Filters',
     btn_clear_all:'Clear All', btn_clear:'Clear', btn_apply:'Apply',
@@ -66,6 +67,7 @@ const TRANSLATIONS = {
     fltr_date:'Rango de Fechas', fltr_any_date:'Cualquier fecha', fltr_from:'Desde',
     fltr_excl_americas:'Excluir Am\u00e9ricas', fltr_excl_europe:'Excluir Europa',
     fltr_min_days:'D\u00edas M\u00edn', fltr_days_suffix:'d\u00edas',
+    fltr_max_dist:'Dist. M\u00e1x', fltr_dist_suffix:'km',
     fltr_source:'Fuente',
     btn_save_preset:'Guardar Filtro', btn_saved_presets:'Filtros Guardados',
     btn_clear_all:'Limpiar Todo', btn_clear:'Limpiar', btn_apply:'Aplicar',
@@ -1233,13 +1235,22 @@ function calReset() {
   if (label) { label.textContent = t('fltr_any_date'); label.classList.remove('has-selection'); }
 }
 
+function haversineKm([lat1, lon1], [lat2, lon2]) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 function applyRallyFilters() {
   const selOrigins = new Set(getMsSelected('ms-origin-options'));
   const selDests   = new Set(getMsSelected('ms-dest-options'));
   const selModels  = new Set(getMsSelected('ms-model-options'));
   const filterStart = calApplied.start;
   const filterEnd   = calApplied.end;
-  const minDays = parseInt(document.getElementById('rally-min-days').value, 10) || 0;
+  const minDays  = parseInt(document.getElementById('rally-min-days').value, 10) || 0;
+  const maxDist  = parseInt(document.getElementById('rally-max-dist').value,  10) || 0;
   const exclAmerica = document.getElementById('rally-excl-america').checked;
   const exclEurope  = document.getElementById('rally-excl-europe').checked;
   const srcImoova      = document.getElementById('rally-src-imoova').checked;
@@ -1248,8 +1259,8 @@ function applyRallyFilters() {
   const isAmericas  = coords => coords[1] < -30;
   const isEurope    = coords => coords[0] >= 35 && coords[0] <= 72 && coords[1] >= -15 && coords[1] <= 45;
 
-  // If continent exclusion is active but geocodes aren't loaded yet, load them first
-  if ((exclAmerica || exclEurope) && !mapGeocodesLoaded) {
+  // If continent exclusion or distance filter is active but geocodes aren't loaded yet, load them first
+  if ((exclAmerica || exclEurope || maxDist > 0) && !mapGeocodesLoaded) {
     fetch('/api/rally-bot/geocodes').then(r => r.json()).then(data => {
       mapGeocodes = data; mapGeocodesLoaded = true; applyRallyFilters();
     });
@@ -1289,6 +1300,13 @@ function applyRallyFilters() {
           if (exclAmerica && isAmericas(dc)) return acc;
           if (exclEurope  && isEurope(dc))   return acc;
         }
+      }
+
+      // Max distance filter
+      if (maxDist > 0) {
+        const oc = mapGeocodes[route.origin];
+        const dc = mapGeocodes[ret.destination];
+        if (oc && dc && haversineKm(oc, dc) > maxDist) return acc;
       }
 
       // Date filter: keep only date ranges that overlap the selected window
@@ -1519,6 +1537,7 @@ function _captureFilterState() {
   const dests   = getMsSelected('ms-dest-options');
   const models  = getMsSelected('ms-model-options');
   const minDays = document.getElementById('rally-min-days').value;
+  const maxDist  = document.getElementById('rally-max-dist').value;
   return {
     origins,
     dests,
@@ -1531,6 +1550,7 @@ function _captureFilterState() {
     srcIndiecampers: document.getElementById('rally-src-indiecampers').checked,
     srcRoadsurfer:   document.getElementById('rally-src-roadsurfer').checked,
     minDays: minDays || '',
+    maxDist:  maxDist  || '',
   };
 }
 
@@ -1546,6 +1566,7 @@ function _presetName(s) {
     parts.push((d.getMonth()+1) + '/' + d.getFullYear().toString().slice(2));
   }
   if (s.minDays)          parts.push(s.minDays + 'd+');
+  if (s.maxDist)          parts.push('≤' + s.maxDist + 'km');
   if (!s.srcImoova)       parts.push('−Im');
   if (!s.srcIndiecampers) parts.push('−IC');
   if (!s.srcRoadsurfer)   parts.push('−RS');
@@ -1565,6 +1586,7 @@ function _presetSummary(s) {
     lines.push('Date: ' + d1 + ' → ' + d2);
   }
   if (s.minDays) lines.push('Min: ' + s.minDays + ' days');
+  if (s.maxDist) lines.push('Max dist: ' + s.maxDist + ' km');
   const src = [s.srcImoova && 'Imoova', s.srcIndiecampers && 'Indie', s.srcRoadsurfer && 'RS'].filter(Boolean);
   if (src.length < 3) lines.push('Src: ' + src.join(', '));
   if (s.exclAmerica) lines.push('No Americas');
@@ -1609,6 +1631,7 @@ function loadFilterPreset(idx) {
   document.getElementById('rally-src-indiecampers').checked = s.srcIndiecampers !== false;
   document.getElementById('rally-src-roadsurfer').checked   = s.srcRoadsurfer !== false;
   document.getElementById('rally-min-days').value           = s.minDays || '';
+  document.getElementById('rally-max-dist').value           = s.maxDist  || '';
   onFilterChange();
 }
 
@@ -1666,6 +1689,7 @@ function clearRallyFilters() {
   document.getElementById('rally-src-indiecampers').checked = true;
   document.getElementById('rally-src-roadsurfer').checked = true;
   document.getElementById('rally-min-days').value = '';
+  document.getElementById('rally-max-dist').value = '';
   onFilterChange();
 }
 
@@ -2392,6 +2416,14 @@ async function applyMapFilters() {
         if (!dates.length) return;
       }
 
+      // Max distance filter
+      const maxDistMap = parseInt(document.getElementById('rally-max-dist').value, 10) || 0;
+      if (maxDistMap > 0) {
+        const oc = mapGeocodes[route.origin];
+        const dc = mapGeocodes[ret.destination];
+        if (oc && dc && haversineKm(oc, dc) > maxDistMap) return;
+      }
+
       const key = route.origin + '||' + ret.destination;
       if (!pairMap[key]) pairMap[key] = { origin: route.origin, destination: ret.destination, items: [] };
       pairMap[key].items.push({ model: ret.model_name || 'Unknown', image: ret.model_image || '', dates, url: ret.roadsurfer_url || '' });
@@ -2427,6 +2459,9 @@ async function applyMapFilters() {
     if (exclAmerica && (isAmericas(oc) || isAmericas(dc))) { missing++; return; }
     if (exclEurope  && (isEurope(oc)   || isEurope(dc)))   { missing++; return; }
 
+    const maxDistVal = parseInt(document.getElementById('rally-max-dist').value, 10) || 0;
+    if (maxDistVal > 0 && haversineKm(oc, dc) > maxDistVal) { missing++; return; }
+
     visible++;
     const color = COLORS[colorIdx % COLORS.length];
     colorIdx++;
@@ -2454,7 +2489,7 @@ async function applyMapFilters() {
     pair.items.forEach(item => {
       if (item.image && !seenImages.has(item.image)) {
         seenImages.add(item.image);
-        popupHtml += `<img class="map-popup-img" src="/api/rally-bot/assets/${encodeURIComponent(item.image)}" alt="${item.model}" />`;
+        popupHtml += `<img class="map-popup-img" src="/api/rally-bot/assets/${item.image.split('/').map(encodeURIComponent).join('/')}" alt="${item.model}" />`;
       }
       popupHtml += `<div class="map-popup-model">🚐 ${item.model}</div>`;
       item.dates.forEach(dr => {

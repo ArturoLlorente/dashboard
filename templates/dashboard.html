@@ -310,6 +310,14 @@
                   <button class="min-days-apply" data-i18n="btn_apply" onclick="onFilterChange()">Apply</button>
                 </div>
               </div>
+              <div class="filter-group" style="flex:0;min-width:180px">
+                <label class="filter-label" data-i18n="fltr_max_dist">Max Distance</label>
+                <div class="min-days-input-wrap">
+                  <input type="number" class="min-days-input" id="rally-max-dist" min="0" step="50" placeholder="∞">
+                  <span class="min-days-suffix" data-i18n="fltr_dist_suffix">km</span>
+                  <button class="min-days-apply" data-i18n="btn_apply" onclick="onFilterChange()">Apply</button>
+                </div>
+              </div>
               <div class="filter-group filter-group-btn" style="flex-direction:row;gap:8px;align-items:flex-end">
                 <button class="btn" data-i18n="btn_clear_all" onclick="clearRallyFilters()">Clear All</button>
                 <div class="presets-dropdown-wrap">
