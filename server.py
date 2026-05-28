@@ -329,38 +329,55 @@ def get_network_info():
     except Exception as e:
         return {'error': str(e)}
 
+_iptv_cache: dict = {}   # last successful response
+
 def get_iptv_status():
-    try:
-        url = f"https://{IPTV_HOST}/player_api.php?username={IPTV_USERNAME}&password={IPTV_PASSWORD}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-            "Accept": "application/json,text/plain,*/*",
-            "Referer": f"https://{IPTV_HOST}/",
-        }
+    global _iptv_cache
+    # Candidate User-Agents used by real Xtream-Codes–compatible players
+    _UA_LIST = [
+        "okhttp/4.9.0",
+        "Dalvik/2.1.0 (Linux; U; Android 11; SDK_GPHONE_X86 Build/RSR1.201013.001)",
+        "TiviMate/4.7.0",
+        "GSE-IPTV",
+        "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 1812 Safari/533.3",
+    ]
+    path = f"/player_api.php?username={IPTV_USERNAME}&password={IPTV_PASSWORD}"
+    for scheme in ("http", "https"):
+        for ua in _UA_LIST:
+            try:
+                url = f"{scheme}://{IPTV_HOST}{path}"
+                headers = {
+                    "User-Agent": ua,
+                    "Accept": "application/json, text/plain, */*",
+                }
+                r = requests.get(url, headers=headers, timeout=8)
+                if r.status_code == 403:
+                    continue
+                r.raise_for_status()
+                data = r.json()
+                user_info = data.get("user_info", {}) or {}
 
-        r = requests.get(url, headers=headers, timeout=10)
-        # if it's 403, show it cleanly
-        if r.status_code == 403:
-            return {"success": False, "error": "Forbidden (403) - provider blocked this host/IP"}
+                exp_date = user_info.get("exp_date", "N/A")
+                if exp_date and str(exp_date).isdigit():
+                    exp_date = datetime.fromtimestamp(int(exp_date)).strftime("%Y-%m-%d %H:%M:%S")
 
-        r.raise_for_status()
-        data = r.json()
-        user_info = data.get("user_info", {}) or {}
+                result = {
+                    "success": True,
+                    "username": user_info.get("username", "N/A"),
+                    "active_cons": user_info.get("active_cons", "N/A"),
+                    "max_connections": user_info.get("max_connections", "N/A"),
+                    "status": user_info.get("status", "N/A"),
+                    "exp_date": exp_date,
+                }
+                _iptv_cache = result
+                return result
+            except Exception:
+                continue
 
-        exp_date = user_info.get("exp_date", "N/A")
-        if exp_date and str(exp_date).isdigit():
-            exp_date = datetime.fromtimestamp(int(exp_date)).strftime("%Y-%m-%d %H:%M:%S")
-
-        return {
-            "success": True,
-            "username": user_info.get("username", "N/A"),
-            "active_cons": user_info.get("active_cons", "N/A"),
-            "max_connections": user_info.get("max_connections", "N/A"),
-            "status": user_info.get("status", "N/A"),
-            "exp_date": exp_date,
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    # All attempts failed — return cached data if available, else error
+    if _iptv_cache:
+        return dict(_iptv_cache, cached=True)
+    return {"success": False, "error": "Provider blocked all requests (403). No cached data available."}
 
 def get_running_services():
     """Get status of important services"""

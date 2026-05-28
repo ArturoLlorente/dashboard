@@ -827,7 +827,7 @@ function updateDashboard(){
       if (data.success) {
         document.getElementById('iptv-username').textContent = data.username ?? '--';
         document.getElementById('iptv-connections').textContent = `${data.active_cons} / ${data.max_connections}`;
-        document.getElementById('iptv-status').textContent = data.status ?? '--';
+        document.getElementById('iptv-status').textContent = (data.status ?? '--') + (data.cached ? ' (cached)' : '');
         document.getElementById('iptv-expires').textContent = data.exp_date ?? '--';
         setPill('iptv-pill', String(data.status).toLowerCase() === 'active' || String(data.status).toLowerCase() === 'enabled');
       } else {
