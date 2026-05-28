@@ -5,3 +5,4 @@ __pycache__/
 battery_history.json
 storage/
 todos.json
+*.conf
