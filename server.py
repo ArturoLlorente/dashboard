@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request, send_from_directory
+from functools import wraps
 import subprocess
 import os
 import requests
@@ -156,16 +157,46 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 # In-memory admin sessions: token -> {created_at}
 admin_sessions = {}
 
-# In-memory terminal sessions: token -> {cwd, created_at}
-terminal_sessions = {}
+# Rate limiting for login attempts
+_login_attempts = {}  # ip -> [timestamps]
+MAX_LOGIN_ATTEMPTS = 5  # per window
+LOGIN_WINDOW_SECONDS = 300  # 5 minutes
 
-def run_command(command):
-    """Execute shell command and return output"""
-    try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=5)
-        return result.stdout.strip()
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Max upload size (10 MB)
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+
+
+def _is_rate_limited(ip: str) -> bool:
+    """Check if an IP has exceeded login attempt limits."""
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    # Prune old attempts
+    attempts = [t for t in attempts if now - t < LOGIN_WINDOW_SECONDS]
+    _login_attempts[ip] = attempts
+    return len(attempts) >= MAX_LOGIN_ATTEMPTS
+
+
+def _record_login_attempt(ip: str):
+    """Record a login attempt for rate limiting."""
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+
+def require_admin(f):
+    """Decorator to require a valid admin session token for an endpoint."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = (request.headers.get('X-Admin-Token') or
+                 request.args.get('admin_token') or
+                 (request.get_json(silent=True) or {}).get('admin_token', ''))
+        session = admin_sessions.get(token)
+        if not session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        if time.time() - session['created_at'] > 86400:
+            admin_sessions.pop(token, None)
+            return jsonify({'success': False, 'error': 'Session expired'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
 
 def load_todos():
     """Load todos from file"""
@@ -622,10 +653,10 @@ def tmux_sessions():
     """Get tmux sessions"""
     return jsonify(get_tmux_sessions())
 
-@app.route('/api/reboot')
+@app.route('/api/reboot', methods=['POST'])
+@require_admin
 def reboot():
-    """Reboot system (use with caution)"""
-    # Add authentication here in production!
+    """Reboot system (requires admin authentication)"""
     run_command('sudo reboot')
     return jsonify({'success': True, 'message': 'Rebooting...'})
 
@@ -634,6 +665,10 @@ def reboot():
 @app.route('/api/admin/login', methods=['POST'])
 def admin_login():
     """Authenticate as admin and get a session token"""
+    ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if _is_rate_limited(ip):
+        return jsonify({'success': False, 'error': 'Too many attempts. Try again later.'}), 429
+    _record_login_attempt(ip)
     data = request.get_json() or {}
     if data.get('password') == ADMIN_PASSWORD:
         token = secrets.token_hex(16)
@@ -663,78 +698,6 @@ def admin_verify():
         return jsonify({'valid': False}), 401
     return jsonify({'valid': True})
 
-
-# ---- Terminal endpoints ----
-
-@app.route('/api/terminal/login', methods=['POST'])
-def terminal_login():
-    """Create a terminal session (admin gate is handled by the frontend)"""
-    token = secrets.token_hex(16)
-    terminal_sessions[token] = {
-        'cwd': str(Path.home()),
-        'created_at': time.time()
-    }
-    return jsonify({'success': True, 'token': token, 'cwd': str(Path.home())})
-
-
-def _get_terminal_session(data):
-    """Validate token and return session dict, or None if invalid/expired."""
-    token = (data or {}).get('token', '')
-    session = terminal_sessions.get(token)
-    if not session:
-        return None, 'Unauthorized'
-    if time.time() - session['created_at'] > 3600:
-        terminal_sessions.pop(token, None)
-        return None, 'Session expired'
-    return session, None
-
-
-@app.route('/api/terminal/exec', methods=['POST'])
-def terminal_exec():
-    """Execute a shell command within the authenticated session"""
-    data = request.get_json() or {}
-    session, err = _get_terminal_session(data)
-    if err:
-        return jsonify({'success': False, 'error': err}), 401
-
-    cmd = data.get('command', '').strip()
-    if not cmd:
-        return jsonify({'output': '', 'cwd': session['cwd']})
-
-    # Handle `cd` specially to persist the working directory
-    if cmd.startswith('cd') and (len(cmd) == 2 or cmd[2] in (' ', '\t')):
-        parts = cmd.split(None, 1)
-        target = os.path.expanduser(parts[1]) if len(parts) > 1 else str(Path.home())
-        if not os.path.isabs(target):
-            target = os.path.join(session['cwd'], target)
-        target = os.path.normpath(target)
-        if os.path.isdir(target):
-            session['cwd'] = target
-            return jsonify({'output': '', 'cwd': session['cwd']})
-        else:
-            return jsonify({'output': f'cd: {target}: No such file or directory', 'cwd': session['cwd']})
-
-    try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
-            timeout=30, cwd=session['cwd']
-        )
-        output = result.stdout
-        if result.stderr:
-            output += result.stderr
-        return jsonify({'output': output.rstrip('\n'), 'cwd': session['cwd']})
-    except subprocess.TimeoutExpired:
-        return jsonify({'output': 'Error: command timed out (30 s limit)', 'cwd': session['cwd']})
-    except Exception as e:
-        return jsonify({'output': f'Error: {e}', 'cwd': session['cwd']})
-
-
-@app.route('/api/terminal/logout', methods=['POST'])
-def terminal_logout():
-    """Invalidate a terminal session token"""
-    data = request.get_json() or {}
-    terminal_sessions.pop(data.get('token', ''), None)
-    return jsonify({'success': True})
 
 # ---- Todo endpoints ----
 
@@ -969,6 +932,7 @@ def rally_bot_routes():
 
 
 @app.route('/api/rally-bot/refresh', methods=['POST'])
+@require_admin
 def rally_bot_refresh():
     """Manually trigger a fresh data fetch from all relocation APIs."""
     if _routes_updating.is_set():
@@ -1221,6 +1185,7 @@ def storage_list():
 
 
 @app.route('/api/storage/mkdir', methods=['POST'])
+@require_admin
 def storage_mkdir():
     """Create a new folder."""
     data = request.get_json() or {}
@@ -1238,8 +1203,12 @@ def storage_mkdir():
 
 
 @app.route('/api/storage/upload', methods=['POST'])
+@require_admin
 def storage_upload():
     """Upload one or more files to a target directory."""
+    # Enforce upload size limit
+    if request.content_length and request.content_length > MAX_UPLOAD_SIZE:
+        return jsonify({'success': False, 'error': 'File too large (max 10 MB)'}), 413
     rel = request.form.get('path', '')
     try:
         folder = _resolve_storage_path(rel)
@@ -1266,6 +1235,7 @@ def storage_upload():
 
 
 @app.route('/api/storage/delete', methods=['POST'])
+@require_admin
 def storage_delete():
     """Delete a file or folder (recursively)."""
     data = request.get_json() or {}
