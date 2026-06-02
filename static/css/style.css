@@ -318,65 +318,6 @@ input[type="range"]::-moz-range-thumb{
   background: rgba(255,255,255,.05);
 }
 
-/* ---- Terminal ---- */
-.term-lock-box{
-  display:flex;flex-direction:column;align-items:center;gap:14px;
-  max-width:340px;margin:60px auto;
-  padding:36px 32px;border:1px solid var(--border);
-  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));
-  border-radius:var(--r);box-shadow:var(--shadow);
-}
-.term-lock-icon{font-size:36px}
-.term-lock-title{font-size:16px;font-weight:900;color:var(--text)}
-.term-lock-sub{font-size:12.5px;color:var(--muted);text-align:center}
-#term-login-form{display:flex;flex-direction:column;gap:10px;width:100%;}
-.term-password-input{
-  width:100%;padding:11px 14px;border-radius:10px;
-  border:1px solid rgba(148,163,184,.22);
-  background:rgba(2,6,23,.55);color:var(--text);font-size:14px;outline:none;
-  transition:border-color .2s;
-}
-.term-password-input:focus{border-color:var(--accent2)}
-.term-login-btn{padding:11px 16px;font-size:13px;border-radius:10px}
-.term-login-error{color:var(--bad);font-size:12.5px;min-height:18px;text-align:center}
-
-.term-topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:8px 14px;border-radius:10px 10px 0 0;
-  background:rgba(2,6,23,.55);border:1px solid var(--border);border-bottom:none;
-}
-.term-cwd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--accent2);font-weight:700;word-break:break-all}
-.term-logout-btn{padding:6px 12px;font-size:11px;flex-shrink:0}
-
-.term-body{
-  min-height:380px;max-height:520px;overflow-y:auto;
-  background:rgba(2,6,23,.72);border:1px solid var(--border);border-bottom:none;
-  padding:14px;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:13px;line-height:1.65;
-  scroll-behavior:smooth;
-}
-.term-line{white-space:pre-wrap;word-break:break-all;margin:0}
-.term-line.cmd{color:var(--accent2)}
-.term-line.cmd .term-ps1{color:#86efac}
-.term-line.out{color:#d1d5db}
-.term-line.err{color:var(--bad)}
-.term-line.info{color:var(--muted);font-style:italic}
-
-.term-input-row{
-  display:flex;align-items:center;gap:8px;padding:10px 14px;
-  background:rgba(2,6,23,.72);border:1px solid var(--border);border-radius:0 0 10px 10px;
-}
-.term-prompt{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:13px;color:#86efac;font-weight:900;flex-shrink:0;white-space:nowrap;
-}
-.term-input{
-  flex:1;background:transparent;border:none;outline:none;
-  color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:13px;caret-color:var(--accent2);
-}
-
 .footer{display:flex;justify-content:center;margin-top:14px;color:var(--muted);font-size:12px}
 
 /* Rally Bot Styles */
@@ -908,15 +849,6 @@ input[type="range"]::-moz-range-thumb{
   /* rally stats cards */
   .rally-stats{grid-template-columns:1fr 1fr}
   .rally-stat-value{font-size:26px}
-
-  /* ---- terminal ---- */
-  .term-body{min-height:220px;max-height:320px;font-size:12px}
-  .term-input{font-size:12px}
-  .term-prompt{font-size:12px}
-  .term-lock-box{margin:24px auto;padding:24px 18px}
-
-  /* ---- tmux ---- */
-  .tmux-session-card{padding:10px 12px}
 
   /* ---- buttons: larger tap targets ---- */
   .btn{padding:11px 14px;font-size:13px}

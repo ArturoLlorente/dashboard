@@ -10,11 +10,9 @@ from pathlib import Path
 import json
 import threading
 import time
-import glob
 import secrets
 import argparse
 import shutil
-import mimetypes
 import sys
 
 # Allow importing data fetchers from rally_bot sibling package
@@ -198,6 +196,15 @@ def require_admin(f):
     return decorated
 
 
+def run_command(command):
+    """Execute shell command and return output"""
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=5)
+        return result.stdout.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 def load_todos():
     """Load todos from file"""
     global todos_data
@@ -298,13 +305,17 @@ def get_brightness():
     except:
         return {'current': 'N/A', 'max': 'N/A', 'percentage': 0}
 
+BACKLIGHT_DIR = Path('/sys/class/backlight/backlight')
+
 def set_brightness(value):
-    """Set brightness level (0-100)"""
+    """Set brightness level (0-100) by writing directly to sysfs."""
     try:
-        max_brightness = int(run_command('cat /sys/class/backlight/*/max_brightness'))
+        max_brightness = int((BACKLIGHT_DIR / 'max_brightness').read_text().strip())
         actual_value = int((value / 100) * max_brightness)
-        result = run_command(f'echo {actual_value} | sudo tee /sys/class/backlight/*/brightness')
+        (BACKLIGHT_DIR / 'brightness').write_text(str(actual_value))
         return {'success': True, 'value': value}
+    except PermissionError:
+        return {'success': False, 'error': 'No write permission on backlight. Run: sudo chmod a+w /sys/class/backlight/backlight/brightness'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -409,97 +420,6 @@ def get_iptv_status():
     if _iptv_cache:
         return dict(_iptv_cache, cached=True)
     return {"success": False, "error": "Provider blocked all requests (403). No cached data available."}
-
-def get_running_services():
-    """Get status of important services"""
-    services = ['sshd', 'cron', 'systemd-resolved']
-    status = {}
-    
-    for service in services:
-        result = run_command(f'systemctl is-active {service}')
-        status[service] = result
-    
-    return status
-
-def get_tmux_socket():
-    """Find the best tmux socket to use (prefer non-root user sockets)"""
-    sockets = sorted(glob.glob('/tmp/tmux-*/default'))
-    # Prefer sockets not owned by root (uid != 0)
-    for s in sockets:
-        if '/tmux-0/' not in s:
-            return s
-    return sockets[0] if sockets else None
-
-
-def get_tmux_sessions():
-    """Get tmux sessions and their status"""
-    try:
-        socket_path = get_tmux_socket()
-        if not socket_path:
-            return {'sessions': [], 'total': 0}
-        sock_flag = f'-S {socket_path}'
-
-        # Get list of tmux sessions
-        sessions_output = run_command(f'tmux {sock_flag} list-sessions -F "#{{session_name}}|#{{session_created}}|#{{session_attached}}|#{{session_windows}}" 2>/dev/null')
-        
-        if not sessions_output or 'Error' in sessions_output or sessions_output == '':
-            return {'sessions': [], 'total': 0}
-        
-        sessions = []
-        for line in sessions_output.strip().split('\n'):
-            if not line:
-                continue
-            parts = line.split('|')
-            if len(parts) >= 4:
-                session_name = parts[0]
-                created = parts[1]
-                attached = parts[2]
-                windows = parts[3]
-                
-                # Get windows info for this session
-                windows_output = run_command(f'tmux {sock_flag} list-windows -t "{session_name}" -F "#{{window_index}}:#{{window_name}}|#{{window_active}}" 2>/dev/null')
-                window_list = []
-                if windows_output and 'Error' not in windows_output:
-                    for win_line in windows_output.strip().split('\n'):
-                        if '|' in win_line:
-                            win_info, is_active = win_line.split('|')
-                            window_list.append({
-                                'name': win_info,
-                                'active': is_active == '1'
-                            })
-                
-                # Get panes count
-                panes_count = run_command(f'tmux {sock_flag} list-panes -t "{session_name}" 2>/dev/null | wc -l')
-                
-                # Calculate uptime
-                try:
-                    created_ts = int(created)
-                    uptime_seconds = int(time.time()) - created_ts
-                    hours = uptime_seconds // 3600
-                    minutes = (uptime_seconds % 3600) // 60
-                    if hours > 0:
-                        uptime = f"{hours}h {minutes}m"
-                    else:
-                        uptime = f"{minutes}m"
-                except:
-                    uptime = 'N/A'
-                
-                sessions.append({
-                    'name': session_name,
-                    'attached': attached != '0',
-                    'windows': int(windows) if windows.isdigit() else 0,
-                    'panes': int(panes_count.strip()) if panes_count.strip().isdigit() else 0,
-                    'uptime': uptime,
-                    'window_list': window_list
-                })
-        
-        return {
-            'sessions': sessions,
-            'total': len(sessions)
-        }
-    except Exception as e:
-        print(f"Error getting tmux sessions: {e}")
-        return {'sessions': [], 'total': 0, 'error': str(e)}
 
 def estimate_battery_life():
     """Estimate remaining battery life (or time to full charge) from recent history."""
@@ -612,7 +532,6 @@ def status():
     brightness = get_brightness()
     system = get_system_info()
     network = get_network_info()
-    services = get_running_services()
     battery_estimate = estimate_battery_life()
 
     return jsonify({
@@ -621,7 +540,6 @@ def status():
         'brightness': brightness,
         'system': system,
         'network': network,
-        'services': services,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
 
@@ -647,18 +565,6 @@ def set_brightness_api(value):
         result = set_brightness(value)
         return jsonify(result)
     return jsonify({'success': False, 'error': 'Value must be between 0 and 100'})
-
-@app.route('/api/tmux')
-def tmux_sessions():
-    """Get tmux sessions"""
-    return jsonify(get_tmux_sessions())
-
-@app.route('/api/reboot', methods=['POST'])
-@require_admin
-def reboot():
-    """Reboot system (requires admin authentication)"""
-    run_command('sudo reboot')
-    return jsonify({'success': True, 'message': 'Rebooting...'})
 
 # ---- Admin endpoints ----
 
@@ -794,7 +700,6 @@ def delete_todo(todo_id):
 @app.route('/api/rally-bot/assets/<path:filename>')
 def rally_bot_asset(filename):
     """Serve van images from rally_bot/assets/"""
-    from flask import send_from_directory
     assets_dir = Path(__file__).parent.parent / 'rally_bot' / 'assets'
     return send_from_directory(str(assets_dir), filename)
 
