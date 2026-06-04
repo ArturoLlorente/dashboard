@@ -1454,4 +1454,15 @@ input[type="date"].todo-input::-webkit-calendar-picker-indicator{
 .file-delete-btn{position:absolute;top:4px;right:4px;background:rgba(248,113,113,.15);border:none;border-radius:4px;color:#f87171;font-size:.65rem;padding:2px 5px;cursor:pointer;opacity:0;transition:opacity .15s;line-height:1.4}
 .file-card:hover .file-delete-btn{opacity:1}
 
+/* ---- LED Controls ---- */
+.led-controls{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.led-mode-row{display:flex;gap:6px;flex-wrap:wrap}
+.led-mode-btn{flex:unset;padding:7px 12px;font-size:.8rem;min-width:0}
+.led-mode-btn.active{border-color:var(--accent);background:rgba(99,179,237,.15);color:var(--accent)}
+.led-slider-row{display:flex;align-items:center;gap:8px}
+.led-slider-row label{font-size:.78rem;color:var(--muted);min-width:60px}
+.led-slider-row input[type="range"]{flex:1;margin:0}
+.led-slider-row span{font-size:.78rem;color:var(--text);min-width:42px;text-align:right}
+.led-select{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.78rem}
+
 

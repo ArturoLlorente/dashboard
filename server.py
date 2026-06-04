@@ -566,6 +566,151 @@ def set_brightness_api(value):
         return jsonify(result)
     return jsonify({'success': False, 'error': 'Value must be between 0 and 100'})
 
+# ---- LED control endpoints ----
+
+# Import LED paths/helpers from led_control.py
+_UTILS_DIR = Path(__file__).parent.parent / 'utils'
+LEDS_BASE = Path('/sys/class/leds')
+NOTIFICATION_LED = LEDS_BASE / 'white:status'
+WHITE_FLASH_LED = LEDS_BASE / 'white:flash'
+YELLOW_FLASH_LED = LEDS_BASE / 'yellow:flash'
+
+
+def _led_read(path: Path) -> str:
+    try:
+        return path.read_text().strip()
+    except (OSError, PermissionError):
+        return ''
+
+
+def _led_write(path: Path, value: str) -> bool:
+    try:
+        path.write_text(value)
+        return True
+    except PermissionError:
+        import subprocess as sp
+        res = sp.run(['sudo', 'chmod', 'a+w', str(path)], capture_output=True)
+        if res.returncode == 0:
+            try:
+                path.write_text(value)
+                return True
+            except OSError:
+                pass
+        return False
+    except OSError:
+        return False
+
+
+def _led_get_trigger(led_path: Path) -> str:
+    raw = _led_read(led_path / 'trigger')
+    for part in raw.split():
+        if part.startswith('[') and part.endswith(']'):
+            return part[1:-1]
+    return 'none'
+
+
+@app.route('/api/led/status')
+def led_status():
+    """Get current LED states."""
+    def led_info(led_path):
+        brightness = _led_read(led_path / 'brightness')
+        max_br = _led_read(led_path / 'max_brightness')
+        trigger = _led_get_trigger(led_path)
+        info = {
+            'brightness': int(brightness) if brightness.isdigit() else 0,
+            'max_brightness': int(max_br) if max_br.isdigit() else 0,
+            'trigger': trigger,
+        }
+        if trigger == 'timer':
+            info['delay_on'] = _led_read(led_path / 'delay_on')
+            info['delay_off'] = _led_read(led_path / 'delay_off')
+        return info
+
+    return jsonify({
+        'notification': led_info(NOTIFICATION_LED),
+        'white_flash': led_info(WHITE_FLASH_LED),
+        'yellow_flash': led_info(YELLOW_FLASH_LED),
+    })
+
+
+@app.route('/api/led/notify', methods=['POST'])
+@require_admin
+def led_notify():
+    """Control the notification LED."""
+    data = request.get_json() or {}
+    action = data.get('action', 'off')
+
+    if action == 'off':
+        _led_write(NOTIFICATION_LED / 'trigger', 'none')
+        _led_write(NOTIFICATION_LED / 'brightness', '0')
+        return jsonify({'success': True, 'state': 'off'})
+
+    brightness_pct = max(0, min(100, int(data.get('brightness', 100))))
+    max_val = int(_led_read(NOTIFICATION_LED / 'max_brightness') or '255')
+    value = int((brightness_pct / 100) * max_val)
+    mode = data.get('mode', 'solid')  # solid, blink, heartbeat, breathe
+
+    if mode == 'heartbeat':
+        _led_write(NOTIFICATION_LED / 'trigger', 'heartbeat')
+    elif mode == 'blink':
+        blink_ms = str(max(100, int(data.get('blink_ms', 500))))
+        _led_write(NOTIFICATION_LED / 'brightness', str(value))
+        _led_write(NOTIFICATION_LED / 'trigger', 'timer')
+        time.sleep(0.1)
+        _led_write(NOTIFICATION_LED / 'delay_on', blink_ms)
+        _led_write(NOTIFICATION_LED / 'delay_off', blink_ms)
+    elif mode == 'breathe':
+        _led_write(NOTIFICATION_LED / 'trigger', 'pattern')
+        time.sleep(0.05)
+        speed = data.get('speed', 'normal')
+        speeds = {'slow': 800, 'normal': 400, 'fast': 200}
+        step_ms = speeds.get(speed, 400)
+        steps_up = [0, 8, 32, 72, 128, 184, 224, 248, 255]
+        steps_down = list(reversed(steps_up[:-1]))
+        all_steps = steps_up + steps_down
+        scaled = [int(s / 255 * value) for s in all_steps]
+        pattern = ' '.join(f'{b} {step_ms}' for b in scaled)
+        _led_write(NOTIFICATION_LED / 'pattern', pattern)
+        _led_write(NOTIFICATION_LED / 'repeat', '-1')
+    else:  # solid
+        _led_write(NOTIFICATION_LED / 'trigger', 'none')
+        _led_write(NOTIFICATION_LED / 'brightness', str(value))
+
+    return jsonify({'success': True, 'state': 'on', 'mode': mode, 'brightness': brightness_pct})
+
+
+@app.route('/api/led/torch', methods=['POST'])
+@require_admin
+def led_torch():
+    """Control the flash LEDs in torch mode."""
+    data = request.get_json() or {}
+    action = data.get('action', 'off')
+    color = data.get('color', 'white')
+
+    leds = []
+    if color in ('white', 'both'):
+        leds.append(WHITE_FLASH_LED)
+    if color in ('yellow', 'both'):
+        leds.append(YELLOW_FLASH_LED)
+
+    if action == 'off':
+        # Turn off all flash LEDs regardless of color param
+        for led in [WHITE_FLASH_LED, YELLOW_FLASH_LED]:
+            _led_write(led / 'flash_strobe', '0')
+            _led_write(led / 'brightness', '0')
+            _led_write(led / 'trigger', 'none')
+        return jsonify({'success': True, 'state': 'off'})
+
+    brightness_pct = max(0, min(100, int(data.get('brightness', 50))))
+    for led in leds:
+        max_val = int(_led_read(led / 'max_brightness') or '255')
+        value = int((brightness_pct / 100) * max_val)
+        _led_write(led / 'trigger', 'none')
+        _led_write(led / 'brightness', str(value))
+
+    return jsonify({'success': True, 'state': 'on', 'color': color, 'brightness': brightness_pct})
+
+
 # ---- Admin endpoints ----
 
 @app.route('/api/admin/login', methods=['POST'])

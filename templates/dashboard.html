@@ -192,6 +192,56 @@
                   <button class="btn" data-i18n="btn_max" onclick="setBrightness(100)">Max</button>
                 </div>
               </div>
+
+              <!-- Notification LED -->
+              <div class="card">
+                <h2><span data-i18n="lbl_notify_led">Notification LED</span><span class="pill" id="notify-led-pill">OFF</span></h2>
+                <div class="led-controls">
+                  <div class="led-mode-row">
+                    <button class="btn led-mode-btn active" id="led-mode-off" onclick="setNotifyLed('off')">Off</button>
+                    <button class="btn led-mode-btn" id="led-mode-solid" onclick="setNotifyLed('solid')">Solid</button>
+                    <button class="btn led-mode-btn" id="led-mode-blink" onclick="setNotifyLed('blink')">Blink</button>
+                    <button class="btn led-mode-btn" id="led-mode-heartbeat" onclick="setNotifyLed('heartbeat')">♥</button>
+                    <button class="btn led-mode-btn" id="led-mode-breathe" onclick="setNotifyLed('breathe')">Breathe</button>
+                  </div>
+                  <div class="led-slider-row" id="notify-led-brightness-row">
+                    <label data-i18n="lbl_brightness">Brightness</label>
+                    <input type="range" min="1" max="100" value="100" id="notify-led-brightness">
+                    <span id="notify-led-brightness-val">100%</span>
+                  </div>
+                  <div class="led-slider-row led-extra-option" id="notify-led-blink-row" style="display:none">
+                    <label data-i18n="lbl_blink_speed">Blink (ms)</label>
+                    <input type="range" min="100" max="2000" step="100" value="500" id="notify-led-blink-ms">
+                    <span id="notify-led-blink-val">500ms</span>
+                  </div>
+                  <div class="led-slider-row led-extra-option" id="notify-led-breathe-row" style="display:none">
+                    <label data-i18n="lbl_breathe_speed">Speed</label>
+                    <select id="notify-led-breathe-speed" class="led-select">
+                      <option value="slow">Slow</option>
+                      <option value="normal" selected>Normal</option>
+                      <option value="fast">Fast</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Torch / Flash LED -->
+              <div class="card">
+                <h2><span data-i18n="lbl_torch">Torch</span><span class="pill" id="torch-pill">OFF</span></h2>
+                <div class="led-controls">
+                  <div class="led-mode-row">
+                    <button class="btn led-mode-btn active" id="torch-mode-off" onclick="setTorch('off')">Off</button>
+                    <button class="btn led-mode-btn" id="torch-mode-white" onclick="setTorch('white')">White</button>
+                    <button class="btn led-mode-btn" id="torch-mode-yellow" onclick="setTorch('yellow')">Yellow</button>
+                    <button class="btn led-mode-btn" id="torch-mode-both" onclick="setTorch('both')">Both</button>
+                  </div>
+                  <div class="led-slider-row" id="torch-brightness-row">
+                    <label data-i18n="lbl_brightness">Brightness</label>
+                    <input type="range" min="1" max="100" value="50" id="torch-brightness">
+                    <span id="torch-brightness-val">50%</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

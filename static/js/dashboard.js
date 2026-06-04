@@ -14,6 +14,8 @@ const TRANSLATIONS = {
     win_controls:'Controls & Services', lbl_username:'Username', lbl_active_max:'Active / Max',
     lbl_status:'Status', lbl_expires:'Expires', lbl_brightness:'Brightness',
     btn_min:'Min', btn_max:'Max',
+    lbl_notify_led:'Notification LED', lbl_torch:'Torch',
+    lbl_blink_speed:'Blink (ms)', lbl_breathe_speed:'Speed',
     win_rally:'Rally Bot', btn_list_view:'☰ List', btn_map_view:'🗺️ Map',
     fltr_origin:'Origin Station', fltr_all_origins:'All Origins',
     fltr_destination:'Destination', fltr_all_dests:'All Destinations',
@@ -60,6 +62,8 @@ const TRANSLATIONS = {
     win_controls:'Controles y Servicios', lbl_username:'Usuario', lbl_active_max:'Activas / M\u00e1x',
     lbl_status:'Estado', lbl_expires:'Vence', lbl_brightness:'Brillo',
     btn_min:'M\u00edn', btn_max:'M\u00e1x',
+    lbl_notify_led:'LED de Notificaci\u00f3n', lbl_torch:'Linterna',
+    lbl_blink_speed:'Parpadeo (ms)', lbl_breathe_speed:'Velocidad',
     win_rally:'Rally Bot', btn_list_view:'\u2630 Lista', btn_map_view:'\ud83d\uddfa\ufe0f Mapa',
     fltr_origin:'Estaci\u00f3n de Origen', fltr_all_origins:'Todos los Or\u00edgenes',
     fltr_destination:'Destino', fltr_all_dests:'Todos los Destinos',
@@ -618,6 +622,130 @@ slider.addEventListener('input', (e) => {
   brightnessTimeout = setTimeout(() => setBrightness(v), 450);
 });
 
+// ---- LED controls ----
+let currentNotifyMode = 'off';
+let currentTorchColor = 'off';
+
+function getAdminToken() {
+  return adminToken || '';
+}
+
+function setNotifyLed(mode) {
+  currentNotifyMode = mode;
+  // Update button active states
+  document.querySelectorAll('#notify-led-pill').forEach(el => {
+    el.textContent = mode === 'off' ? 'OFF' : 'ON';
+    el.classList.toggle('ok', mode !== 'off');
+    el.classList.toggle('bad', false);
+  });
+  document.querySelectorAll('.card #led-mode-off, .card #led-mode-solid, .card #led-mode-blink, .card #led-mode-heartbeat, .card #led-mode-breathe').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById(`led-mode-${mode}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  // Show/hide extra options
+  document.getElementById('notify-led-blink-row').style.display = mode === 'blink' ? '' : 'none';
+  document.getElementById('notify-led-breathe-row').style.display = mode === 'breathe' ? '' : 'none';
+
+  // Send to API
+  const brightness = Number(document.getElementById('notify-led-brightness').value);
+  const body = { action: mode === 'off' ? 'off' : 'on', mode, brightness };
+  if (mode === 'blink') body.blink_ms = Number(document.getElementById('notify-led-blink-ms').value);
+  if (mode === 'breathe') body.speed = document.getElementById('notify-led-breathe-speed').value;
+
+  fetch('/api/led/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': getAdminToken() },
+    body: JSON.stringify(body)
+  }).catch(err => console.error('LED notify error:', err));
+}
+
+function setTorch(color) {
+  currentTorchColor = color;
+  document.querySelectorAll('#torch-pill').forEach(el => {
+    el.textContent = color === 'off' ? 'OFF' : 'ON';
+    el.classList.toggle('ok', color !== 'off');
+  });
+  document.querySelectorAll('.card #torch-mode-off, .card #torch-mode-white, .card #torch-mode-yellow, .card #torch-mode-both').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById(`torch-mode-${color}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  const brightness = Number(document.getElementById('torch-brightness').value);
+  const body = { action: color === 'off' ? 'off' : 'on', color, brightness };
+
+  fetch('/api/led/torch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': getAdminToken() },
+    body: JSON.stringify(body)
+  }).catch(err => console.error('LED torch error:', err));
+}
+
+// Notify LED brightness slider
+document.getElementById('notify-led-brightness').addEventListener('input', (e) => {
+  document.getElementById('notify-led-brightness-val').textContent = e.target.value + '%';
+  if (currentNotifyMode !== 'off') setNotifyLed(currentNotifyMode);
+});
+// Blink speed slider
+document.getElementById('notify-led-blink-ms').addEventListener('input', (e) => {
+  document.getElementById('notify-led-blink-val').textContent = e.target.value + 'ms';
+  if (currentNotifyMode === 'blink') setNotifyLed('blink');
+});
+// Breathe speed select
+document.getElementById('notify-led-breathe-speed').addEventListener('change', () => {
+  if (currentNotifyMode === 'breathe') setNotifyLed('breathe');
+});
+// Torch brightness slider
+document.getElementById('torch-brightness').addEventListener('input', (e) => {
+  document.getElementById('torch-brightness-val').textContent = e.target.value + '%';
+  if (currentTorchColor !== 'off') setTorch(currentTorchColor);
+});
+
+// Load LED status on page load
+function loadLedStatus() {
+  fetch('/api/led/status')
+    .then(r => r.json())
+    .then(data => {
+      const n = data.notification;
+      if (n.trigger === 'none' && n.brightness === 0) {
+        currentNotifyMode = 'off';
+      } else if (n.trigger === 'heartbeat') {
+        currentNotifyMode = 'heartbeat';
+      } else if (n.trigger === 'timer') {
+        currentNotifyMode = 'blink';
+      } else if (n.trigger === 'pattern') {
+        currentNotifyMode = 'breathe';
+      } else {
+        currentNotifyMode = 'solid';
+      }
+      // Update UI to reflect state
+      document.querySelectorAll('.card #led-mode-off, .card #led-mode-solid, .card #led-mode-blink, .card #led-mode-heartbeat, .card #led-mode-breathe').forEach(btn => btn.classList.remove('active'));
+      const ab = document.getElementById(`led-mode-${currentNotifyMode}`);
+      if (ab) ab.classList.add('active');
+      document.getElementById('notify-led-pill').textContent = currentNotifyMode === 'off' ? 'OFF' : 'ON';
+      document.getElementById('notify-led-pill').classList.toggle('ok', currentNotifyMode !== 'off');
+      if (n.max_brightness > 0) {
+        const pct = Math.round((n.brightness / n.max_brightness) * 100);
+        document.getElementById('notify-led-brightness').value = pct || 100;
+        document.getElementById('notify-led-brightness-val').textContent = (pct || 100) + '%';
+      }
+      document.getElementById('notify-led-blink-row').style.display = currentNotifyMode === 'blink' ? '' : 'none';
+      document.getElementById('notify-led-breathe-row').style.display = currentNotifyMode === 'breathe' ? '' : 'none';
+
+      // Torch
+      const wf = data.white_flash;
+      const yf = data.yellow_flash;
+      if (wf.brightness > 0 && yf.brightness > 0) currentTorchColor = 'both';
+      else if (wf.brightness > 0) currentTorchColor = 'white';
+      else if (yf.brightness > 0) currentTorchColor = 'yellow';
+      else currentTorchColor = 'off';
+      document.querySelectorAll('.card #torch-mode-off, .card #torch-mode-white, .card #torch-mode-yellow, .card #torch-mode-both').forEach(btn => btn.classList.remove('active'));
+      const tb = document.getElementById(`torch-mode-${currentTorchColor}`);
+      if (tb) tb.classList.add('active');
+      document.getElementById('torch-pill').textContent = currentTorchColor === 'off' ? 'OFF' : 'ON';
+      document.getElementById('torch-pill').classList.toggle('ok', currentTorchColor !== 'off');
+    })
+    .catch(() => {});
+}
+
 // ---- network delta state (backend returns bytes totals) ----
 let prevNetTotals = null; // { rxBytes, txBytes, ts }
 
@@ -866,6 +994,9 @@ function smartRefresh() {
 // Load battery history on startup and refresh every 5 minutes
 loadBatteryHistory();
 setInterval(loadBatteryHistory, 300000);
+
+// Load LED status on startup
+loadLedStatus();
 
 // Load metrics history on startup, then start smart updates
 loadMetricsHistory();
