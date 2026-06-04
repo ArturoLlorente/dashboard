@@ -609,6 +609,52 @@ def _led_get_trigger(led_path: Path) -> str:
     return 'none'
 
 
+# ---- Software-driven blink / breathe for notification LED ----
+# delay_on/off and pattern/repeat sysfs files require root write permissions
+# even when the trigger is set by a non-root user, so we drive these effects
+# from a background thread using only the brightness file (which is world-writable).
+
+_notify_effect_stop = threading.Event()
+_notify_effect_thread = None
+_notify_effect_lock = threading.Lock()
+
+
+def _stop_notify_effect():
+    """Signal the current blink/breathe thread to stop and wait for it."""
+    global _notify_effect_thread
+    _notify_effect_stop.set()
+    with _notify_effect_lock:
+        if _notify_effect_thread and _notify_effect_thread.is_alive():
+            _notify_effect_thread.join(timeout=2)
+        _notify_effect_thread = None
+    _notify_effect_stop.clear()
+
+
+def _run_blink(value: int, delay_s: float):
+    steps = [value, 0]
+    while not _notify_effect_stop.is_set():
+        for v in steps:
+            if _notify_effect_stop.is_set():
+                return
+            _led_write(NOTIFICATION_LED / 'brightness', str(v))
+            if _notify_effect_stop.wait(delay_s):
+                return
+
+
+def _run_breathe(max_value: int, step_s: float):
+    steps_up   = [0, 8, 32, 72, 128, 184, 224, 248, 255]
+    steps_down = list(reversed(steps_up[:-1]))
+    cycle = steps_up + steps_down
+    scaled = [int(s / 255 * max_value) for s in cycle]
+    while not _notify_effect_stop.is_set():
+        for v in scaled:
+            if _notify_effect_stop.is_set():
+                return
+            _led_write(NOTIFICATION_LED / 'brightness', str(v))
+            if _notify_effect_stop.wait(step_s):
+                return
+
+
 @app.route('/api/led/status')
 def led_status():
     """Get current LED states."""
@@ -621,15 +667,13 @@ def led_status():
             'max_brightness': int(max_br) if max_br.isdigit() else 0,
             'trigger': trigger,
         }
-        if trigger == 'timer':
-            info['delay_on'] = _led_read(led_path / 'delay_on')
-            info['delay_off'] = _led_read(led_path / 'delay_off')
         return info
 
     return jsonify({
         'notification': led_info(NOTIFICATION_LED),
         'white_flash': led_info(WHITE_FLASH_LED),
         'yellow_flash': led_info(YELLOW_FLASH_LED),
+        'notify_effect': '' if _notify_effect_thread is None or not _notify_effect_thread.is_alive() else 'running',
     })
 
 
@@ -637,10 +681,12 @@ def led_status():
 @require_admin
 def led_notify():
     """Control the notification LED."""
+    global _notify_effect_thread
     data = request.get_json() or {}
     action = data.get('action', 'off')
 
     if action == 'off':
+        _stop_notify_effect()
         _led_write(NOTIFICATION_LED / 'trigger', 'none')
         _led_write(NOTIFICATION_LED / 'brightness', '0')
         return jsonify({'success': True, 'state': 'off'})
@@ -650,30 +696,26 @@ def led_notify():
     value = int((brightness_pct / 100) * max_val)
     mode = data.get('mode', 'solid')  # solid, blink, heartbeat, breathe
 
+    # Stop any running software effect before switching mode
+    _stop_notify_effect()
+    _led_write(NOTIFICATION_LED / 'trigger', 'none')
+
     if mode == 'heartbeat':
         _led_write(NOTIFICATION_LED / 'trigger', 'heartbeat')
     elif mode == 'blink':
-        blink_ms = str(max(100, int(data.get('blink_ms', 500))))
-        _led_write(NOTIFICATION_LED / 'brightness', str(value))
-        _led_write(NOTIFICATION_LED / 'trigger', 'timer')
-        time.sleep(0.1)
-        _led_write(NOTIFICATION_LED / 'delay_on', blink_ms)
-        _led_write(NOTIFICATION_LED / 'delay_off', blink_ms)
+        # Software blink: only uses brightness file (world-writable)
+        delay_s = max(0.1, int(data.get('blink_ms', 500))) / 1000
+        _notify_effect_thread = threading.Thread(
+            target=_run_blink, args=(value, delay_s), daemon=True)
+        _notify_effect_thread.start()
     elif mode == 'breathe':
-        _led_write(NOTIFICATION_LED / 'trigger', 'pattern')
-        time.sleep(0.05)
-        speed = data.get('speed', 'normal')
-        speeds = {'slow': 800, 'normal': 400, 'fast': 200}
-        step_ms = speeds.get(speed, 400)
-        steps_up = [0, 8, 32, 72, 128, 184, 224, 248, 255]
-        steps_down = list(reversed(steps_up[:-1]))
-        all_steps = steps_up + steps_down
-        scaled = [int(s / 255 * value) for s in all_steps]
-        pattern = ' '.join(f'{b} {step_ms}' for b in scaled)
-        _led_write(NOTIFICATION_LED / 'pattern', pattern)
-        _led_write(NOTIFICATION_LED / 'repeat', '-1')
+        # Software breathe: only uses brightness file (world-writable)
+        speeds = {'slow': 0.08, 'normal': 0.04, 'fast': 0.02}
+        step_s = speeds.get(data.get('speed', 'normal'), 0.04)
+        _notify_effect_thread = threading.Thread(
+            target=_run_breathe, args=(value, step_s), daemon=True)
+        _notify_effect_thread.start()
     else:  # solid
-        _led_write(NOTIFICATION_LED / 'trigger', 'none')
         _led_write(NOTIFICATION_LED / 'brightness', str(value))
 
     return jsonify({'success': True, 'state': 'on', 'mode': mode, 'brightness': brightness_pct})
@@ -694,8 +736,7 @@ def led_torch():
         leds.append(YELLOW_FLASH_LED)
 
     if action == 'off':
-        # Turn off all flash LEDs regardless of color param
-        for led in [WHITE_FLASH_LED, YELLOW_FLASH_LED]:
+        for led in leds:
             _led_write(led / 'flash_strobe', '0')
             _led_write(led / 'brightness', '0')
             _led_write(led / 'trigger', 'none')

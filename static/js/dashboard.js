@@ -680,14 +680,20 @@ function setTorch(color) {
 }
 
 // Notify LED brightness slider
+let notifyBrightnessTimeout;
 document.getElementById('notify-led-brightness').addEventListener('input', (e) => {
   document.getElementById('notify-led-brightness-val').textContent = e.target.value + '%';
-  if (currentNotifyMode !== 'off') setNotifyLed(currentNotifyMode);
+  clearTimeout(notifyBrightnessTimeout);
+  if (currentNotifyMode !== 'off')
+    notifyBrightnessTimeout = setTimeout(() => setNotifyLed(currentNotifyMode), 400);
 });
-// Blink speed slider
+// Blink speed slider — debounced so we don't restart the thread on every pixel of drag
+let notifyBlinkTimeout;
 document.getElementById('notify-led-blink-ms').addEventListener('input', (e) => {
   document.getElementById('notify-led-blink-val').textContent = e.target.value + 'ms';
-  if (currentNotifyMode === 'blink') setNotifyLed('blink');
+  clearTimeout(notifyBlinkTimeout);
+  if (currentNotifyMode === 'blink')
+    notifyBlinkTimeout = setTimeout(() => setNotifyLed('blink'), 400);
 });
 // Breathe speed select
 document.getElementById('notify-led-breathe-speed').addEventListener('change', () => {
