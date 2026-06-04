@@ -10,52 +10,44 @@ A self-hosted web dashboard for monitoring and controlling a Linux phone (or any
 
 ---
 
+## Table of Contents
+
+- [Preview](#preview)
+- [Features](#features)
+  - [System Metrics](#-system-metrics)
+  - [LED Controls](#-led-controls)
+  - [Brightness Control](#-brightness-control)
+  - [IPTV Status](#-iptv-status)
+  - [To-Do List](#-to-do-list)
+  - [File Storage](#-file-storage)
+  - [Admin Access](#-admin-access)
+  - [Internationalization](#-internationalization-i18n)
+  - [Rally Bot Integration](#-rally-bot-integration-optional)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [LED Permissions](#led-permissions)
+- [Customization](#customization)
+- [License](#license)
+
+---
+
 ## Preview
 
-```html
-<!-- The dashboard renders cards like these in a responsive grid -->
-<div class="card">
-  <h2><span>Notification LED</span><span class="pill ok">ON</span></h2>
-  <div class="led-mode-row">
-    <button class="btn led-mode-btn">Off</button>
-    <button class="btn led-mode-btn active">Solid</button>
-    <button class="btn led-mode-btn">Blink</button>
-    <button class="btn led-mode-btn">♥</button>
-    <button class="btn led-mode-btn">Breathe</button>
-  </div>
-  <div class="led-slider-row">
-    <label>Brightness</label>
-    <input type="range" min="1" max="100" value="80">
-    <span>80%</span>
-  </div>
-</div>
 
-<div class="card">
-  <h2><span>Brightness</span><span class="pill ok">CONTROL</span></h2>
-  <div class="kpi"><div class="value">72</div><div class="unit">%</div></div>
-  <input type="range" min="0" max="100" value="72">
-  <div class="btnrow">
-    <button class="btn">Min</button>
-    <button class="btn">50%</button>
-    <button class="btn">Max</button>
-  </div>
-</div>
+**Controls & Services panel** — cards for Brightness, Notification LED, and Torch:
 
-<div class="card">
-  <h2><span>Torch</span><span class="pill">OFF</span></h2>
-  <div class="led-mode-row">
-    <button class="btn led-mode-btn active">Off</button>
-    <button class="btn led-mode-btn">White</button>
-    <button class="btn led-mode-btn">Yellow</button>
-    <button class="btn led-mode-btn">Both</button>
-  </div>
-  <div class="led-slider-row">
-    <label>Brightness</label>
-    <input type="range" min="1" max="100" value="50">
-    <span>50%</span>
-  </div>
-</div>
-```
+
+<p align="center">
+  <img src="docs/screenshots/overview.png" width="700" alt="Dashboard overview" /><br/>
+  <em>Overview — system stats, battery, quick stats bar</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/metrics.png" width="350" alt="System metrics" />
+  <img src="docs/screenshots/led-controls.png" width="350" alt="Controls &amp; Services" /><br/>
+  <em>System Metrics &nbsp;·&nbsp; Controls &amp; Services</em>
+</p>
 
 ---
 
