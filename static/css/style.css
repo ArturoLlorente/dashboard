@@ -486,7 +486,6 @@ input[type="range"]::-moz-range-thumb{
   cursor:pointer;font-size:12px;font-weight:800;letter-spacing:.3px;
   color:var(--accent2);background:rgba(56,189,248,.06);
   border-top:1px solid rgba(148,163,184,.08);
-  position:sticky;top:0;z-index:1;
 }
 .ms-group-header:first-child{border-top:none}
 .ms-group-header input[type=checkbox]{
@@ -1247,7 +1246,7 @@ input[type="date"].todo-input::-webkit-calendar-picker-indicator{
 .admin-modal-overlay{
   display:none;
   position:fixed;inset:0;
-  z-index:600;
+  z-index:1100;
   background:rgba(4,6,18,.75);
   -webkit-backdrop-filter:blur(8px);
   backdrop-filter:blur(8px);
