@@ -2472,7 +2472,8 @@ function _mapInit() {
   // Init Leaflet once
   if (!mapInstance) {
     mapInstance = L.map('map-container').setView([50.5, 10], 4);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    const cartoKeyParam = window.CARTO_API_KEY ? `?key=${encodeURIComponent(window.CARTO_API_KEY)}` : '';
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${cartoKeyParam}`, {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 19,

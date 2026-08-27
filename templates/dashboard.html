@@ -585,6 +585,9 @@
     </div>
   </div>
 
+  <script>
+    window.CARTO_API_KEY = {{ carto_api_key | tojson }};
+  </script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

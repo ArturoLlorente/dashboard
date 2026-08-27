@@ -44,8 +44,17 @@ def _load_routes_if_changed() -> bool:
     with _routes_lock:
         if mtime == _routes_cache['mtime']:
             return False
-        with open(ROUTES_FILE, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(ROUTES_FILE, 'r') as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            # Reads can race with a concurrent write; keep the previous good
+            # cache and try again on the next poll instead of crashing the
+            # watcher thread (which would otherwise stop refreshing forever).
+            import logging
+            logging.getLogger('dashboard.routes_refresh').warning(
+                f'Failed to reload station_routes.json, keeping previous cache: {e}')
+            return False
         _routes_cache = {'data': data, 'mtime': mtime}
     return True
 
@@ -66,16 +75,15 @@ def _fetch_routes_from_apis():
         indie  = IndieCampersDataFetcher(logger)
         rs     = StationDataFetcher(logger)
 
+        # Fetch all three sources fully in memory and save only once at the
+        # end. Saving after each individual source would briefly leave
+        # station_routes.json (and this dashboard's own cache) missing the
+        # not-yet-fetched sources — e.g. Roadsurfer's ~2 minute fetch would
+        # make it look like there are zero Roadsurfer routes in the meantime.
         merged = list(imoova.sync_full_update() or [])
-        imoova.output_data = merged
-        imoova.save_output_to_json(ROUTES_FILE)
-
         merged += indie.sync_full_update() or []
-        indie.output_data = merged
-        indie.save_output_to_json(ROUTES_FILE)
+        merged += rs.sync_full_update() or []
 
-        rs_data = rs.sync_full_update() or []
-        merged += rs_data
         rs.output_data = merged
         rs.save_output_to_json(ROUTES_FILE)
 
@@ -151,6 +159,7 @@ IPTV_USERNAME = os.environ.get('IPTV_USERNAME', 'your_username')
 IPTV_PASSWORD = os.environ.get('IPTV_PASSWORD', 'your_password')
 IPTV_HOST = os.environ.get('IPTV_HOST', 'your_host.com')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
+CARTO_API_KEY = os.environ.get('CARTO_API_KEY', '')
 
 # In-memory admin sessions: token -> {created_at}
 admin_sessions = {}
@@ -523,7 +532,7 @@ def add_metrics_history(system_info, network_info):
 # Routes
 @app.route('/')
 def index():
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', carto_api_key=CARTO_API_KEY)
 
 @app.route('/api/status')
 def status():
