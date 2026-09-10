@@ -129,6 +129,14 @@ BATTERY_UPDATE_INTERVAL = 600  # Record battery every 10 minutes (600 seconds)
 battery_history = []  # Will be loaded from file on startup
 last_battery_record_time = 0  # Track last time battery was recorded
 
+# ---- Low battery audio alert ----
+BATTERY_ALERT_SOUND = Path(__file__).parent / 'static' / 'sounds' / 'battery_low.mp3'
+BATTERY_ALERT_THRESHOLD = 50  # Warn below this capacity (%)
+BATTERY_ALERT_INTERVAL = 600  # Repeat the warning every 10 minutes
+BATTERY_ALERT_SINK = 'alsa_output.platform-sound.HiFi__Speaker1__sink'
+BATTERY_ALERT_VOLUME = '1.0'
+last_battery_alert_time = 0
+
 # Real-time metrics history (in-memory, last 60 points)
 MAX_REALTIME_POINTS = 60
 metrics_history = {
@@ -284,6 +292,43 @@ def add_battery_entry(capacity, status, force=False):
     # Save to file (in background to avoid blocking)
     threading.Thread(target=save_battery_history, daemon=True).start()
 
+def _play_battery_alert():
+    """Play the low battery sound through the phone speaker."""
+    if not BATTERY_ALERT_SOUND.exists():
+        print(f"Battery alert sound not found: {BATTERY_ALERT_SOUND}")
+        return
+    # pw-play needs XDG_RUNTIME_DIR to locate the PipeWire socket
+    env = {
+        'XDG_RUNTIME_DIR': f'/run/user/{os.getuid()}',
+        'PATH': '/usr/bin:/usr/local/bin:/bin',
+    }
+    try:
+        subprocess.run(
+            ['pw-play', '--volume', BATTERY_ALERT_VOLUME,
+             '--target', BATTERY_ALERT_SINK, str(BATTERY_ALERT_SOUND)],
+            env=env, capture_output=True, timeout=60)
+    except Exception as e:
+        print(f"Error playing battery alert: {e}")
+
+
+def check_battery_alert(capacity, status):
+    """Play a warning sound every BATTERY_ALERT_INTERVAL while the battery is low."""
+    global last_battery_alert_time
+
+    charging = str(status).strip().lower() in ('charging', 'full')
+    if capacity >= BATTERY_ALERT_THRESHOLD or charging:
+        # Rearm so the next drop below the threshold alerts immediately
+        last_battery_alert_time = 0
+        return
+
+    current_time = time.time()
+    if current_time - last_battery_alert_time < BATTERY_ALERT_INTERVAL:
+        return
+
+    last_battery_alert_time = current_time
+    threading.Thread(target=_play_battery_alert, daemon=True).start()
+
+
 def get_battery_info():
     """Get battery status"""
     try:
@@ -293,6 +338,7 @@ def get_battery_info():
         # Add to history if valid
         if capacity != 'N/A' and capacity.isdigit():
             add_battery_entry(int(capacity), status)
+            check_battery_alert(int(capacity), status)
         
         return {
             'capacity': capacity,
